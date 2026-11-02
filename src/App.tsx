@@ -18,6 +18,8 @@ const MisConvocatoriasView = lazy(() => import('./views/MisConvocatoriasView').t
 const CandidatosView = lazy(() => import('./views/CandidatosView').then(module => ({ default: module.CandidatosView })));
 const CaptacionView = lazy(() => import('./views/CaptacionView').then(module => ({ default: module.CaptacionView })));
 const PublicCaptureView = lazy(() => import('./views/PublicCaptureView').then(module => ({ default: module.PublicCaptureView })));
+const TrainingSurveysView = lazy(() => import('./views/TrainingSurveyView').then(module => ({ default: module.TrainingSurveysView })));
+const PublicTrainingSurveyView = lazy(() => import('./views/TrainingSurveyView').then(module => ({ default: module.PublicTrainingSurveyView })));
 const FormacionDashboardView = lazy(() => import('./views/FormacionDashboardView').then(module => ({ default: module.FormacionDashboardView })));
 const CapacitacionesView = lazy(() => import('./views/CapacitacionesView').then(module => ({ default: module.CapacitacionesView })));
 const MisCapacitacionesView = lazy(() => import('./views/MisCapacitacionesView').then(module => ({ default: module.MisCapacitacionesView })));
@@ -47,6 +49,7 @@ const rolesForView: Partial<Record<ActiveNavModule, UserProfile['role'][]>> = {
   FORMACION_MIS_CAPACITACIONES: ['ADMIN', 'COORDINADOR_FORMACION', 'FORMADOR'],
   FORMACION_PARTICIPANTES: ['ADMIN', 'JEFE_FORMACION', 'COORDINADOR_FORMACION', 'FORMADOR'],
   FORMACION_OJT: ['ADMIN', 'JEFE_FORMACION', 'COORDINADOR_FORMACION', 'FORMADOR'],
+  FORMACION_ENCUESTAS: ['ADMIN', 'JEFE_FORMACION', 'COORDINADOR_FORMACION', 'FORMADOR'],
   TALENTO_CONTRATACIONES: ['ADMIN', 'JEFE_TALENTO', 'ANALISTA_TALENTO'],
   ANALITICA: ['ADMIN', 'JEFE_SELECCION', 'JEFE_FORMACION', 'JEFE_TALENTO'],
   CONFIGURACION: ['ADMIN'],
@@ -152,6 +155,7 @@ const MainLayout: React.FC = () => {
             )}
 
             {/* TALENTO / CONTRATACIONES */}
+            {activeModule === 'FORMACION_ENCUESTAS' && <TrainingSurveysView />}
             {activeModule === 'TALENTO_CONTRATACIONES' && (
               <ContratacionesView />
             )}
@@ -214,6 +218,8 @@ const AppContent: React.FC = () => {
 };
 
 export default function App() {
+  const surveyRoute = window.location.pathname.match(/^\/encuestas\/capacitacion\/([0-9a-f-]{36})$/);
+  if (surveyRoute) return <Suspense fallback={<p className="p-6">Cargando encuesta…</p>}><PublicTrainingSurveyView token={surveyRoute[1]} /></Suspense>;
   const operationsRoute = window.location.pathname.match(/^\/operaciones\/rq\/([a-f0-9]{48})$/);
   if (operationsRoute) return <Suspense fallback={<p className="p-6">Cargando RQ…</p>}><PublicOperationsRqView token={operationsRoute[1]} /></Suspense>;
   const captureRoute = window.location.pathname.match(/^\/captacion\/([a-f0-9]{48})$/);

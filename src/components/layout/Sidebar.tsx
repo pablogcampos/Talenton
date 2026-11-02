@@ -2,6 +2,7 @@ import React from 'react';
 import { LucideIcon } from 'lucide-react';
 import { 
   BarChart3, 
+  ClipboardList,
   Building2, 
   Layers, 
   Users, 
@@ -125,6 +126,7 @@ export const Sidebar: React.FC<{ navigationOpen?: boolean; onCloseNavigation?: (
 
   if (hasModule('FORMACION')) {
     const formacionItems: NavigationItem[] = [
+      {id:'FORMACION_ENCUESTAS',label:'Encuestas de capacitación',icon:ClipboardList,badge:null},
       {
         id: 'FORMACION_DASHBOARD',
         label: 'Panel de Formación',

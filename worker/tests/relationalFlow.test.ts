@@ -57,7 +57,7 @@ describe('Transición relacional PostgreSQL 17',()=>{
     else if(fn==='talent_session_profile')result=await db.query('select public.talent_session_profile($1::uuid) as result',[body.p_auth]);
     else if(fn==='talent_runtime_snapshot')result=await db.query('select public.talent_runtime_snapshot($1::uuid,$2) as result',[body.p_actor,body.p_public_hash]);
     else if(fn==='talent_runtime_commit'){if(failNextCaptureCommit){failNextCaptureCommit=false;throw new Error('SIMULATED_COMMIT_FAILURE');}result=await db.query('select public.talent_runtime_commit($1::uuid,$2,$3,$4,$5::jsonb,$6::text[]) as result',[body.p_actor,body.p_public_hash,body.p_company,body.p_revision,JSON.stringify(body.p_rows),body.p_resets||[]]);}
-    else if(fn?.startsWith('talent_org_')){const keys=Object.keys(body);result=await db.query('select public.'+fn+'('+keys.map((k,i)=>k+'=> $'+(i+1)).join(',')+') as result',keys.map(k=>['p_rows','p_grants'].includes(k)?JSON.stringify(body[k]):Array.isArray(body[k])?'{'+body[k].join(',')+'}':body[k]&&typeof body[k]==='object'?JSON.stringify(body[k]):body[k]));}
+    else if(fn?.startsWith('talent_org_')||fn?.startsWith('talent_survey_')){const keys=Object.keys(body);result=await db.query('select public.'+fn+'('+keys.map((k,i)=>k+'=> $'+(i+1)).join(',')+') as result',keys.map(k=>['p_rows','p_grants'].includes(k)?JSON.stringify(body[k]):Array.isArray(body[k])?'{'+body[k].join(',')+'}':body[k]&&typeof body[k]==='object'?JSON.stringify(body[k]):body[k]));}
     else throw new Error('UNKNOWN_RPC '+fn);
     await db.exec('commit');return fn==='talent_runtime_commit'?new Response(null,{status:204}):Response.json(result.rows[0].result??null);
    }catch(e:any){await db.exec('rollback');console.log('SQL ERROR',e.code,e.message);return Response.json({code:e.code,message:e.message},{status:e.code==='PT409'?409:400});}
@@ -559,6 +559,49 @@ describe('Transición relacional PostgreSQL 17',()=>{
    const crossUser=(await call('/api/bootstrap')).data.users.find((v:any)=>v.email==='ci.companyhome');expect(crossUser.companyId).toBe('talent-up');
    expect((await call('/api/users/'+crossUser.id+'/access','PATCH',{displayName:'Edited from Talent-On',role:'RECLUTADOR',status:'ACTIVO',module:['SELECCION']})).status).toBe(200);
   } finally {env.ORG_ENABLED=undefined;}
+ });
+ it('encuesta se abre solo al finalizar y conserva respuestas únicas aunque cambie el documento',async()=>{
+  const detail=await call('/api/trainings/'+groupId+'/survey');
+  expect(detail.status).toBe(200);expect(detail.data.enabled).toBe(false);
+  expect((await call('/api/trainings/'+groupId+'/survey','GET',undefined,other)).status).not.toBe(200);
+  const path='/api/public/surveys/'+detail.data.token;
+  const identifiers=(await db.query(`select i.* from talent.persons i join talent.applications a on a.company_id=i.company_id and a.person_id=i.id join talent.participants p on p.company_id=a.company_id and p.application_id=a.id where p.group_id=$1 and i.archived_at is null`,[groupId])).rows;
+  expect(identifiers.length).toBeGreaterThan(0);
+  const identity=identifiers[0];
+  await db.query('update talent.persons set document_number=$1 where company_id=$2 and id=$3',['00123456',identity.company_id,identity.id]);
+  const body={documentType:'DNI',document:'00123456',answers:[5,5,5,5,5,5,5,5],positive:'Muy claro',improvement:'Más prácticas'};
+  expect((await call(path,'POST',body)).data.message).toBe('SURVEY_DISABLED');
+  await db.query("update talent.training_groups set status='FINALIZADA' where id=$1",[groupId]);
+  await db.query("update talent.training_groups set status='FINALIZADA' where id=$1",[groupId]);
+  expect((await db.query('select count(*)::int as n from talent_surveys.surveys where group_id=$1',[groupId])).rows[0].n).toBe(1);
+  expect((await call(path)).data.enabled).toBe(true);
+  expect((await call(path,'POST',{...body,answers:[6,5,5,5,5,5,5,5]})).data.message).toBe('SURVEY_INVALID');
+  expect((await call(path,'POST',{...body,document:'12345678'})).data.message).toBe('SURVEY_PARTICIPANT_NOT_FOUND');
+  expect((await call(path,'POST',body)).status).toBe(200);
+  expect((await call(path,'POST',body)).status).toBe(409);
+  await db.query('update talent.persons set document_number=$1 where company_id=$2 and id=$3',['00123457',identity.company_id,identity.id]);
+  expect((await call(path,'POST',{...body,document:'00123457'})).status).toBe(409);
+  const completed=(await call('/api/trainings/'+groupId+'/survey')).data;
+  expect(completed.responses).toHaveLength(1);expect(completed.responses[0].score).toBe(20);
+  expect(completed.participants.filter((p:any)=>p.completed)).toHaveLength(1);
+  expect(completed.responses[0].participantId).toBeUndefined();
+  const exported=await call('/api/trainings/'+groupId+'/survey?export=1');
+  expect(exported.status).toBe(200);
+  expect((await db.query("select count(*)::int as n from talent_surveys.audit where survey_id=$1 and action='EXPORTED'",[detail.data.id])).rows[0].n).toBe(1);
+  expect((await call('/api/trainings/'+groupId+'/survey?export=1','GET',undefined,trainer)).status).toBe(403);
+  const grants=(await db.query("select has_function_privilege('anon','public.talent_survey_detail(text,text,text)','EXECUTE') as public_read, has_function_privilege('authenticated','public.talent_survey_public(uuid,jsonb)','EXECUTE') as bypass")).rows[0];
+  expect(grants).toEqual({public_read:false,bypass:false});
+  // CE uses the same stable participant identity and preserves leading zeroes.
+  await db.query("update talent.persons set document_type='CE',document_number='000ABC123' where company_id=$1 and id=$2",[identity.company_id,identity.id]);
+  expect((await call(path,'POST',{...body,documentType:'CE',document:'000ABC123'})).status).toBe(409);
+  // Contended inserts are protected by the database unique constraint, not a preflight read.
+  await db.query('delete from talent_surveys.responses where survey_id=$1',[detail.data.id]);
+  const attempts=await Promise.allSettled([1,2].map(()=>db.query('select public.talent_survey_public($1,$2::jsonb)',[detail.data.token,JSON.stringify({...body,documentType:'CE',document:'000ABC123',answers:[1,1,1,1,1,1,1,1]})])));
+  expect(attempts.filter(r=>r.status==='fulfilled')).toHaveLength(1);
+  expect(attempts.filter(r=>r.status==='rejected')).toHaveLength(1);
+  expect((await call('/api/trainings/'+groupId+'/survey')).data.responses[0].score).toBe(4);
+  await db.query('update talent.persons set document_type=$1 where company_id=$2 and id=$3',[identity.document_type,identity.company_id,identity.id]);
+  await db.query('update talent.persons set document_number=$1 where company_id=$2 and id=$3',[identity.document_number,identity.company_id,identity.id]);
  });
  it('permite pasar directamente a Apto con datos básicos completos y documentos pendientes',async()=>{
   const created=await call('/api/candidates','POST',{dni:'99900009',fullName:'CI Apto directo',campaignId,recruiterId:admin,source:'Otro'});

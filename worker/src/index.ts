@@ -8,6 +8,7 @@ import { unifiedRequest } from './unified';
 import { SupabaseError, type SupabaseEnv } from './supabase';
 import { handleSelectionAdvanced, checkProcessStage } from './selectionAdvanced';
 import { handleOperations } from './operations';
+import { surveyRpc, publicSurvey } from './surveys';
 export interface Env extends SupabaseEnv, RuntimeEnv {
   VERIFIED_SESSION?: SessionProfile;
   RELATIONAL_ACTOR?: SessionProfile;
@@ -1091,6 +1092,14 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       }
       return response({ok:true},201,headers);
     }
+    const surveyMatch = url.pathname.match(/^\/api\/trainings\/([^/]+)\/survey$/);
+    if (surveyMatch && request.method === 'GET') {
+      const trainingId = decodeURIComponent(surveyMatch[1]);
+      const training = await requireTrainingAccess(env, actor, trainingId);
+      const exporting = url.searchParams.get('export') === '1';
+      if (exporting && !['ADMIN','JEFE_FORMACION','COORDINADOR_FORMACION'].includes(actor.role)) throw new Error('FORBIDDEN');
+      return response(await surveyRpc(env, 'talent_survey_detail', {p_company: training.companyId, p_group: trainingId, p_export_actor: exporting ? actor.uid : null}), 200, {...cors(request,env),'Cache-Control':'no-store'});
+    }
     const trainerMatch = url.pathname.match(/^\/api\/trainings\/([^/]+)\/trainer$/);
     if (request.method === 'GET' && trainerMatch) return await availableTrainingTrainers(request, env, actor, decodeURIComponent(trainerMatch[1]));
     if (request.method === 'POST' && trainerMatch) return await assignTrainingTrainer(request, env, actor, decodeURIComponent(trainerMatch[1]));
@@ -1193,6 +1202,13 @@ async function relationalBootstrap(request:Request,env:Env,actor:Profile) {
 
 const worker={async fetch(request:Request,env:Env):Promise<Response>{
   const path=new URL(request.url).pathname;
+  const surveyToken=path.match(/^\/api\/public\/surveys\/([0-9a-f-]{36})$/)?.[1];
+  if(surveyToken && request.method!=='OPTIONS'){
+    try{
+      if(!originAllowed(request,env))throw new SupabaseError(403,'ORIGIN_NOT_ALLOWED');
+      return response(await publicSurvey(request,env,surveyToken),200,{...cors(request,env),'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});
+    }catch(e){return response({message:e instanceof SupabaseError?e.code:'SURVEY_FAILED'},e instanceof SupabaseError?e.status:500,{...cors(request,env),'Cache-Control':'no-store'});}
+  }
   if(request.method!=='OPTIONS'&&(path.startsWith('/api/operations/')||path.startsWith('/api/public/operations/'))){
     const result=await handleOperations(request,env);
     if(result){const headers=new Headers(result.headers);Object.entries(cors(request,env)).forEach(([key,value])=>headers.set(key,value));return new Response(result.body,{status:result.status,headers});}
