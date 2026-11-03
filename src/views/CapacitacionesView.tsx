@@ -1,3 +1,4 @@
+import { OffersPanel } from './LaborOffersView';
 import { TrainingPreparation } from '../components/training/TrainingPreparation';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -24,7 +25,7 @@ interface CapacitacionesViewProps {
   onOpenNewCohortModal?: () => void;
 }
 
-type AdminTab = 'RESUMEN' | 'CRONOGRAMA' | 'HISTORIAL';
+type AdminTab = 'PROPUESTAS' | 'RESUMEN' | 'CRONOGRAMA' | 'HISTORIAL';
 
 const statusOptions: { value: 'TODOS' | TrainingCohortStatus; label: string }[] = [
   { value: 'TODOS', label: 'Todos los estados' },
@@ -317,6 +318,7 @@ export const CapacitacionesView: React.FC<CapacitacionesViewProps> = ({ onOpenNe
 
               <div className="flex overflow-x-auto border-b border-[#DCE5EA] bg-white px-4">
                 {[
+                  { id: 'PROPUESTAS' as const, label: 'Propuestas', icon: Users },
                   { id: 'RESUMEN' as const, label: 'Resumen', icon: Users },
                   { id: 'CRONOGRAMA' as const, label: 'Cronograma', icon: CalendarDays },
                   { id: 'HISTORIAL' as const, label: 'Historial', icon: History },
@@ -338,7 +340,7 @@ export const CapacitacionesView: React.FC<CapacitacionesViewProps> = ({ onOpenNe
               </div>
 
               <div className="p-4">
-                <TrainingPreparation cohort={selectedCohort} />
+                {activeTab === 'PROPUESTAS' ? <OffersPanel key={selectedCohort.id} companyId={selectedCohort.companyId!} groupId={selectedCohort.id}/> : <TrainingPreparation cohort={selectedCohort} />}
                 {activeTab === 'RESUMEN' && (
                   <div className="space-y-4">
                     <div className="grid overflow-hidden rounded-xl border border-[#DCE5EA] bg-[#F8FAFC] sm:grid-cols-2 xl:grid-cols-4">

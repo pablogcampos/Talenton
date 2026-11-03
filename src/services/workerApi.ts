@@ -13,6 +13,16 @@ export class WorkerApiError extends Error {
 }
 
 const WORKER_ERROR_MESSAGES: Record<string, string> = {
+  OFFER_SIGNATURES_PENDING: 'Todos los participantes deben firmar su propuesta laboral antes de finalizar la etapa teórica. Revisa la sección Propuestas.',
+  OFFER_STAGE_CLOSED: 'La etapa teórica ya está cerrada; no se puede cambiar la propuesta.',
+  OFFER_INVALID_TEMPLATE: 'La propuesta debe pertenecer a la misma empresa y campaña de la capacitación.',
+  OFFER_ALREADY_SIGNED: 'Ya existen firmas. La propuesta asignada se conserva sin modificaciones.',
+  OFFER_REVOKED_VERSION: 'Esta versión fue reemplazada. Crea una nueva versión para asignarla.',
+  OFFER_INVALID_SIGNATURE: 'Verifica tu documento, acepta las condiciones y dibuja tu firma completa.',
+  OFFER_RATE_LIMITED: 'Se alcanzó el límite de intentos. Intenta nuevamente en 15 minutos.',
+  OFFER_NOT_FOUND: 'La propuesta no está disponible o el enlace fue reemplazado.',
+  OFFER_INVALID: 'Revisa los campos de la propuesta.',
+  OFFER_FAILED: 'No se pudo completar la operación de propuestas. Intenta nuevamente.',
   GERENCIA_REQUIRED: 'Agrega una gerencia activa antes de generar el enlace.',
   LINK_NOT_FOUND: 'El enlace ya no está disponible.',
   LOOKUP_EXPIRED: 'La consulta del DNI venció o ya fue utilizada. Vuelve a consultarlo.',

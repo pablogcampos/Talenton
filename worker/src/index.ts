@@ -10,6 +10,8 @@ import { SupabaseError, type SupabaseEnv } from './supabase';
 import { handleSelectionAdvanced, checkProcessStage } from './selectionAdvanced';
 import { handleOperations } from './operations';
 import { surveyRpc, publicSurvey } from './surveys';
+import { handleOffers } from './offers';
+import { unqualifyCandidates } from './unifiedCandidates';
 export interface Env extends SupabaseEnv, RuntimeEnv {
   VERIFIED_SESSION?: SessionProfile;
   RELATIONAL_ACTOR?: SessionProfile;
@@ -550,7 +552,9 @@ async function syncCandidateTraining(env: Env, candidateId: string, participant:
 }
 async function trainingTheory(request: Request, env: Env, actor: Profile, trainingId: string, action: string) {
   const training = await requireTrainingAccess(env, actor, trainingId);
-  const input = await request.json<Record<string, unknown>>();
+  const referencedCompanies = new Set<string>();
+  const input = unqualifyCandidates(await request.json<Record<string, unknown>>(), referencedCompanies) as Record<string, unknown>;
+  if ([...referencedCompanies].some(company => company !== actor.companyId)) throw new Error('FORBIDDEN');
   const now = new Date().toISOString();
   if (action === 'start' && !['PROGRAMADA','EN_CAPACITACION'].includes(String(training.status))) throw new Error('INVALID_TRAINING_TRANSITION');
   if (action === 'finish' && training.status !== 'EN_CAPACITACION') throw new Error('INVALID_TRAINING_TRANSITION');
@@ -1278,6 +1282,12 @@ async function relationalBootstrap(request:Request,env:Env,actor:Profile) {
 
 const worker={async fetch(request:Request,env:Env):Promise<Response>{
   const path=new URL(request.url).pathname;
+  if(request.method!=='OPTIONS' && (path==='/api/offers'||path.startsWith('/api/offers/')||path.startsWith('/api/public/offers/'))){
+    try{
+      if(!originAllowed(request,env))throw new SupabaseError(403,'ORIGIN_NOT_ALLOWED');
+      return response(await handleOffers(request,env),200,{...cors(request,env),'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'});
+    }catch(e){return response({message:e instanceof SupabaseError?e.code:'OFFER_FAILED'},e instanceof SupabaseError?e.status:500,{...cors(request,env),'Cache-Control':'no-store'});}
+  }
   const surveyToken=path.match(/^\/api\/public\/surveys\/([0-9a-f-]{36})$/)?.[1];
   if(surveyToken && request.method!=='OPTIONS'){
     try{

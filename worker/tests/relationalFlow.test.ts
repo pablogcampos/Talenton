@@ -24,6 +24,14 @@ async function call(path:string,method='GET',body?:any,actor=admin,company?:stri
  if(!r.ok)console.log('FLOW ERROR',method,path,r.status,data);
  return {status:r.status,data};
 }
+
+async function signGroup(group:string){
+ const created=await call('/api/offers/templates','POST',{campaignId,title:'CI Propuesta',content:'Condiciones CI para {{nombre}}. Bonos y políticas de capacitación.'});expect(created.status).toBe(200);
+ expect((await call('/api/offers/assign','POST',{groupId:group,templateId:created.data})).status).toBe(200);
+ const docs=(await db.query('select * from talent_offers.documents where group_id=$1 and revoked_at is null',[group])).rows;
+ for(const d of docs){const signed=await call('/api/public/offers/'+d.token,'POST',{dni:d.snapshot.dni,accepted:true,contentHash:d.content_hash,signature:[Array.from({length:12},(_,i)=>[i*10,30+i])]});expect(signed.status).toBe(200);expect(signed.data.signedAt).toBeTruthy();}
+}
+
 describe('Transición relacional PostgreSQL 17',()=>{
  beforeAll(async()=>{
   db=new PGlite();
@@ -57,7 +65,7 @@ describe('Transición relacional PostgreSQL 17',()=>{
     else if(fn==='talent_session_profile')result=await db.query('select public.talent_session_profile($1::uuid) as result',[body.p_auth]);
     else if(fn==='talent_runtime_snapshot')result=await db.query('select public.talent_runtime_snapshot($1::uuid,$2) as result',[body.p_actor,body.p_public_hash]);
     else if(fn==='talent_runtime_commit'){if(failNextCaptureCommit){failNextCaptureCommit=false;throw new Error('SIMULATED_COMMIT_FAILURE');}result=await db.query('select public.talent_runtime_commit($1::uuid,$2,$3,$4,$5::jsonb,$6::text[]) as result',[body.p_actor,body.p_public_hash,body.p_company,body.p_revision,JSON.stringify(body.p_rows),body.p_resets||[]]);}
-    else if(fn?.startsWith('talent_org_')||fn?.startsWith('talent_survey_')||fn?.startsWith('talent_unlock_')){const keys=Object.keys(body);result=await db.query('select public.'+fn+'('+keys.map((k,i)=>k+'=> $'+(i+1)).join(',')+') as result',keys.map(k=>['p_rows','p_grants'].includes(k)?JSON.stringify(body[k]):Array.isArray(body[k])?'{'+body[k].join(',')+'}':body[k]&&typeof body[k]==='object'?JSON.stringify(body[k]):body[k]));}
+    else if(fn?.startsWith('talent_offer_')||fn?.startsWith('talent_org_')||fn?.startsWith('talent_survey_')||fn?.startsWith('talent_unlock_')){const keys=Object.keys(body);result=await db.query('select public.'+fn+'('+keys.map((k,i)=>k+'=> $'+(i+1)).join(',')+') as result',keys.map(k=>['p_rows','p_grants'].includes(k)?JSON.stringify(body[k]):Array.isArray(body[k])?'{'+body[k].join(',')+'}':body[k]&&typeof body[k]==='object'?JSON.stringify(body[k]):body[k]));}
     else throw new Error('UNKNOWN_RPC '+fn);
     await db.exec('commit');return fn==='talent_runtime_commit'?new Response(null,{status:204}):Response.json(result.rows[0].result??null);
    }catch(e:any){await db.exec('rollback');console.log('SQL ERROR',e.code,e.message);return Response.json({code:e.code,message:e.message},{status:e.code==='PT409'?409:400});}
@@ -125,7 +133,10 @@ describe('Transición relacional PostgreSQL 17',()=>{
   // El inicio grupal funciona sin ninguna definición de evaluación.
   expect(bootstrap.data.cohorts[0].evaluationsConfig).toHaveLength(0);
   expect((await call('/api/trainings/'+groupId+'/theory/start','POST',{},trainer)).data).toMatchObject({status:'EN_CAPACITACION',count:1});
-  expect((await call('/api/trainings/'+groupId+'/theory/finish','POST',{grades:[{candidateId:personId,score:17}]},trainer)).data.status).toBe('PENDIENTE_OJT');
+  expect((await call('/api/trainings/'+groupId+'/theory/finish','POST',{grades:[{candidateId:personId,score:17}]},trainer)).data.message).toBe('OFFER_SIGNATURES_PENDING');
+  await signGroup(groupId);
+  expect((await call('/api/trainings/'+groupId+'/theory/finish','POST',{grades:[{candidateId:'uc.other.'+personId,score:17}]},trainer)).status).toBe(403);
+  expect((await call('/api/trainings/'+groupId+'/theory/finish','POST',{grades:[{candidateId:'uc.tenant.'+personId,score:17}]},trainer)).data.status).toBe('PENDIENTE_OJT');
   // Restablecer únicamente el fixture para probar también las rutas heredadas.
   await db.query("update talent.training_groups set status='PROGRAMADA' where id=$1",[groupId]);
   await db.query("update talent.participants set status='PENDIENTE_INICIO',training_approved=false,annotations=annotations-'finalGrade'-'theoryCompletedAt' where group_id=$1",[groupId]);
@@ -703,6 +714,8 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect(incomplete.status).toBe(400);
   const before=(await call('/api/bootstrap')).data.candidates;
   expect(ids.slice(0,2).map(id=>before.find((c:any)=>c.id===id).training.status)).toEqual(['EN_CAPACITACION','EN_CAPACITACION']);
+  expect((await call(path+'/theory/finish','POST',{grades:ids.slice(0,2).map((id,i)=>({candidateId:id,score:18+i}))},trainer)).data.message).toBe('OFFER_SIGNATURES_PENDING');
+  await signGroup(created.data.id);
   expect((await call(path+'/theory/finish','POST',{grades:ids.slice(0,2).map((id,i)=>({candidateId:id,score:18+i}))},trainer)).data).toMatchObject({count:2,status:'PENDIENTE_OJT'});
   const after=(await call('/api/bootstrap')).data.candidates;
   expect(after.find((c:any)=>c.id===ids[0]).training).toMatchObject({status:'PENDIENTE_OJT',finalGrade:18});
@@ -730,5 +743,78 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect((await call(path+'/theory/finish','POST',{grades:[{candidateId:personId,score:20}]},trainer)).status).toBe(400);
   expect((await call(path+'/participants/'+personId+'/ojt/start','POST',{},trainer)).status).toBe(201);
   expect((await call('/api/bootstrap')).data.cohorts.find((g:any)=>g.id===groupId).status).toBe('EN_OJT');
+ });
+
+ it('propuestas: permisos, personalización, versiones, firma inmutable y bloqueo de todos los participantes',async()=>{
+  const recruiter='40000000-0000-4000-8000-000000000004', analyst='40000000-0000-4000-8000-000000000005', outsider='40000000-0000-4000-8000-000000000006';
+  for(const [id,role] of [[recruiter,'RECLUTADOR'],[analyst,'ANALISTA_SELECCION'],[outsider,'RECLUTADOR']]){
+   await db.query('insert into auth.users values($1)',[id]);authUsers.set(id,{id});
+   await db.query("insert into talent.profiles(company_id,id,auth_user_id,username,display_name,role,status) values('tenant',$1::text,$1::uuid,$1::text,'CI oferta',$2,'ACTIVO')",[id,role]);
+   await db.query("insert into talent.user_modules(company_id,id,user_id,module) values('tenant',$1,$1,'SELECCION')",[id]);
+   if(id!==outsider)await db.query("insert into talent.campaign_assignments(company_id,id,campaign_id,user_id,assignment_kind) values('tenant',$1,$2,$1,'SCOPE')",[id,campaignId]);
+  }
+  const ids:string[]=[];
+  for(const dni of ['99777001','99777002','99777003']){
+   const p=await call('/api/candidates','POST',{dni,fullName:'Postulante '+dni,phone:'999777001',campaignId,recruiterId:admin,source:'Otro'});expect(p.status).toBe(201);ids.push(p.data.id);
+   expect((await call('/api/candidates/'+p.data.id+'/stage','POST',{stage:'APTO_CAPACITACION'})).status).toBe(200);
+  }
+  const day=new Date().toISOString().slice(0,10);
+  const created=await call('/api/trainings/from-selection','POST',{campaignId,candidateIds:ids.slice(0,2),name:'CI propuestas',code:'CI-OFFERS',startDate:day,endDate:day,totalDays:2,modality:'PRESENCIAL',schedule:'09:00-16:00'});
+  expect(created.status).toBe(201);const group=created.data.id,path='/api/trainings/'+group;
+  expect((await call(path+'/trainer','POST',{trainerId:trainer})).status).toBe(200);
+  const payload={campaignId,title:'Condiciones 1',content:'Estimado {{nombre}}, propuesta de {{empresa}} para {{campaña}}. Bonos y políticas CI.'};
+  expect((await call('/api/offers/templates','POST',payload,recruiter)).status).toBe(403);
+  expect((await call('/api/offers/templates','POST',payload,trainer)).status).toBe(403);
+  expect((await call('/api/offers/templates','POST',payload,other)).status).toBe(403);
+  const t1=await call('/api/offers/templates','POST',payload,analyst);expect(t1.status).toBe(200);
+  expect((await call('/api/offers/assign','POST',{groupId:group,templateId:t1.data},analyst)).status).toBe(403);
+  expect((await call('/api/offers/assign','POST',{groupId:group,templateId:t1.data},outsider)).status).toBe(403);
+  expect((await call('/api/offers/assign','POST',{groupId:group,templateId:t1.data},recruiter)).status).toBe(200);
+  const old=(await call('/api/offers?group='+group,'GET',undefined,trainer)).data.documents;expect(old).toHaveLength(2);
+  const t2=await call('/api/offers/templates','POST',{...payload,title:'Condiciones 2'},analyst);
+  expect((await call('/api/offers/assign','POST',{groupId:group,templateId:t2.data},recruiter)).status).toBe(200);
+  expect((await call('/api/public/offers/'+old[0].token)).data.message).toBe('OFFER_NOT_FOUND');
+  const catalog=(await call('/api/offers?group='+group,'GET',undefined,trainer)).data;
+  const docs=catalog.documents.filter((d:any)=>!d.revokedAt);
+  expect(docs).toHaveLength(2);
+  expect((await call('/api/offers/documents/'+docs[0].id,'GET',undefined,other)).status).toBe(403);
+  expect((await call('/api/offers?group='+group,'GET',undefined,outsider)).status).toBe(403);
+  const signature=[Array.from({length:15},(_,i)=>[i*10,20+i])];
+  for(const doc of docs){
+   const pub=await call('/api/public/offers/'+doc.token);
+   expect(pub.data.snapshot.name).toBe(doc.name);expect(pub.data.snapshot.dni).toBeUndefined();expect(pub.data.snapshot.content).toContain(doc.name);expect(pub.data.snapshot.content).not.toContain('{{nombre}}');
+   const row=(await db.query('select * from talent_offers.documents where id=$1',[doc.id])).rows[0];
+   for(const invalid of [{accepted:false},{dni:'11111111'},{contentHash:'forged'},{signature:[]},{signature:[[[999,1]]]},{signature:[[['<script>',1]]]}]){
+    expect((await call('/api/public/offers/'+doc.token,'POST',{accepted:true,dni:row.snapshot.dni,contentHash:row.content_hash,signature,...invalid})).data.message).toBe('OFFER_INVALID_SIGNATURE');
+   }
+  }
+  expect((await call(path+'/theory/start','POST',{},trainer)).status).toBe(200);
+  await db.query("update talent.participants set status='REPROGRAMADO' where group_id=$1 and application_id in (select id from talent.applications where person_id=$2)",[group,ids[1]]);
+  const finish={grades:[{candidateId:ids[0],score:18}]};
+  expect((await call(path+'/theory/finish','POST',finish,trainer)).data.message).toBe('OFFER_SIGNATURES_PENDING');
+  for(let i=0;i<docs.length;i++){
+   const row=(await db.query('select * from talent_offers.documents where id=$1',[docs[i].id])).rows[0];
+   const body={accepted:true,dni:row.snapshot.dni,contentHash:row.content_hash,signature};
+   const signed=await call('/api/public/offers/'+docs[i].token,'POST',body);expect(signed.status).toBe(200);expect(signed.data.signature).toEqual(signature);
+   const again=await call('/api/public/offers/'+docs[i].token,'POST',{...body,signature:[[[1,1]]]});expect(again.status).toBe(200);
+   expect((await db.query('select signature from talent_offers.documents where id=$1',[docs[i].id])).rows[0].signature).toEqual(signature);
+   await expect(db.query("update talent_offers.documents set snapshot='{}' where id=$1",[docs[i].id])).rejects.toThrow('OFFER_IMMUTABLE');
+   if(i===0)expect((await call(path+'/theory/finish','POST',finish,trainer)).data.message).toBe('OFFER_SIGNATURES_PENDING');
+  }
+  expect((await call('/api/offers/assign','POST',{groupId:group,templateId:t1.data},recruiter)).data.message).toBe('OFFER_ALREADY_SIGNED');
+  const saved=(await call('/api/offers/documents/'+docs[0].id,'GET',undefined,analyst)).data;expect(saved.signed_at).toBeTruthy();expect(saved.acceptance).toContain('acepto');expect(saved.evidence_hash).toHaveLength(64);
+  // Un participante agregado después también recibe su documento personalizado.
+  const app=(await db.query('select id from talent.applications where person_id=$1',[ids[2]])).rows[0].id;
+  await db.query("insert into talent.participants(company_id,id,group_id,application_id,status,joined_at) values('tenant','late-offer',$1,$2,'REPROGRAMADO',now())",[group,app]);
+  const late=(await db.query("select * from talent_offers.documents where participant_id='late-offer'")).rows[0];expect(late.snapshot.name).toContain('99777003');
+  expect((await call(path+'/theory/finish','POST',finish,trainer)).data.message).toBe('OFFER_SIGNATURES_PENDING');
+  for(let i=0;i<11;i++)await call('/api/public/offers/'+late.token,'POST',{accepted:true,dni:'wrong',contentHash:late.content_hash,signature});
+  expect((await call('/api/public/offers/'+late.token,'POST',{accepted:true,dni:late.snapshot.dni,contentHash:late.content_hash,signature})).status).toBe(429);
+  await db.query("update talent_offers.attempts set window_at=now()-interval '16 minutes' where token=$1",[late.token]);
+  expect((await call('/api/public/offers/'+late.token,'POST',{accepted:true,dni:late.snapshot.dni,contentHash:late.content_hash,signature})).status).toBe(200);
+  expect((await call(path+'/theory/finish','POST',finish,trainer)).status).toBe(200);
+  expect((await call('/api/offers/assign','POST',{groupId:group,templateId:t2.data},recruiter)).data.message).toBe('OFFER_STAGE_CLOSED');
+  const funcs=await db.query("select has_function_privilege('anon','public.talent_offer_public(text,jsonb,text)','execute') as anon,has_function_privilege('authenticated','public.talent_offer_assign(uuid,text,text,uuid)','execute') as authenticated");
+  expect(funcs.rows[0]).toEqual({anon:false,authenticated:false});
  });
 });

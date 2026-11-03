@@ -1,3 +1,4 @@
+import { OffersPanel } from './LaborOffersView';
 import { trainingDayNumber } from '../../shared/trainingRules';
 import { TrainingPreparation } from '../components/training/TrainingPreparation';
 import { TrainingFinalPanel } from '../components/training/TrainingFinalPanel';
@@ -9,8 +10,9 @@ import { getWorkerErrorMessage } from '../services/workerApi';
 import { AttendancePanel } from '../components/training/AttendancePanel';
 import { limaDate } from '../components/training/attendanceTime';
 
-type WorkspaceTab = 'RESUMEN' | 'ASISTENCIA' | 'OJT' | 'RESULTADO';
+type WorkspaceTab = 'PROPUESTAS' | 'RESUMEN' | 'ASISTENCIA' | 'OJT' | 'RESULTADO';
 const tabs: Array<{ id: WorkspaceTab; label: string; icon: React.ElementType }> = [
+  { id: 'PROPUESTAS', label: 'Propuestas', icon: ClipboardCheck },
   { id: 'RESUMEN', label: 'Resumen', icon: BarChart3 }, { id: 'ASISTENCIA', label: 'Asistencia', icon: UserCheck },
   { id: 'OJT', label: 'OJT', icon: BookOpenCheck }, { id: 'RESULTADO', label: 'Resultado final', icon: Award },
 ];
@@ -105,6 +107,7 @@ export const MisCapacitacionesView: React.FC = () => {
       <nav className="flex overflow-x-auto border-y border-slate-200 px-3">{tabs.map(item => { const Icon = item.icon; return <button key={item.id} onClick={() => setTab(item.id)} className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-xs font-semibold ${tab === item.id ? 'border-[#0A5AA3] text-[#0A5AA3]' : 'border-transparent text-slate-500'}`}><Icon className="h-4 w-4" />{item.label}</button>; })}</nav>
       {actionError && <div className="mx-5 mt-4 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700"><AlertCircle className="h-4 w-4" />{actionError}<button className="ml-auto" onClick={() => setActionError('')}><X className="h-4 w-4" /></button></div>}
       <div className="p-5">
+        {tab === 'PROPUESTAS' && <OffersPanel key={selected.id} companyId={selected.companyId!} groupId={selected.id}/>}
         {tab === 'RESUMEN' && <><TrainingPreparation cohort={selected} participants={participants} /><Summary cohort={selected} participants={participants} trainerName={currentUser.name} /></>}
         {tab === 'ASISTENCIA' && <AttendancePanel participants={participants} date={attendanceDate} setDate={date => { setFollowingToday(false); setWindowInfo(null); setAttendanceDate(date); }} onToday={() => { setFollowingToday(true); setAttendanceDate(windowInfo ? limaDate(new Date(windowInfo.serverNow)) : todayInLima()); }} windowInfo={windowInfo} loading={windowLoading} saving={saving} onMark={markAttendance} onUnlock={() => setUnlockOpen(true)} onDecision={decideUnlock} canDecide={['ADMIN', 'JEFE_FORMACION', 'COORDINADOR_FORMACION'].includes(currentUser.role)} openCandidate360={openCandidate360} />}
 

@@ -696,6 +696,7 @@ export interface TrainingCohort {
 
 export type ActiveNavModule = 
   | 'OPERACIONES_ADMIN'
+  | 'SELECCION_PROPUESTAS'
   | 'SELECCION_RQ'
   | 'SELECCION_CAPTACION'
   | 'INICIO'

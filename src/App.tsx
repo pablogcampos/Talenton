@@ -7,6 +7,8 @@ import { SupabaseAccessGate } from './components/auth/SupabaseAccessGate';
 import { ActiveNavModule, UserProfile } from './types';
 import { SelectionRqAlert } from './components/selection/SelectionRqAlert';
 
+const LaborOffersView = lazy(() => import('./views/LaborOffersView').then(m => ({ default: m.LaborOffersView })));
+const PublicOfferView = lazy(() => import('./views/PublicOfferView').then(m => ({ default: m.PublicOfferView })));
 const Candidate360Modal = lazy(() => import('./components/candidates/Candidate360Modal').then(module => ({ default: module.Candidate360Modal })));
 const DashboardView = lazy(() => import('./views/DashboardView').then(module => ({ default: module.DashboardView })));
 const GlobalDashboardView = lazy(() => import('./views/GlobalDashboardView').then(module => ({ default: module.GlobalDashboardView })));
@@ -35,6 +37,7 @@ const CreateTrainingCohortModal = lazy(() => import('./components/modals/CreateT
 
 const rolesForView: Partial<Record<ActiveNavModule, UserProfile['role'][]>> = {
   OPERACIONES_ADMIN: ['ADMIN', 'JEFE_OPERACIONES', 'COORDINADOR_OPERACIONES'],
+  SELECCION_PROPUESTAS: ['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION', 'RECLUTADOR'],
   SELECCION_RQ: ['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION'],
   SELECCION_CAPTACION: ['ADMIN', 'RECLUTADOR', 'ANALISTA_SELECCION'],
   SELECCION_DASHBOARD: ['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION', 'RECLUTADOR'],
@@ -112,6 +115,7 @@ const MainLayout: React.FC = () => {
           <Suspense fallback={<div className="py-12 text-center text-slate-500">Cargando módulo…</div>}>
           <div className="talent-view w-full space-y-6">
             {(activeModule === 'INICIO' || activeModule === 'SELECCION_DASHBOARD') && <SelectionRqAlert />}
+            {activeModule === 'SELECCION_PROPUESTAS' && <LaborOffersView />}
             {activeModule === 'SELECCION_RQ' && <SelectionRqView />}
             {activeModule === 'OPERACIONES_ADMIN' && <OperationsAdminView />}
             {activeModule === 'SELECCION_CAPTACION' && <CaptacionView />}
@@ -218,6 +222,8 @@ const AppContent: React.FC = () => {
 };
 
 export default function App() {
+  const offerRoute = window.location.pathname.match(/^\/propuesta\/([a-f0-9]{64})$/);
+  if (offerRoute) return <Suspense fallback={<p className="p-6">Cargando propuesta…</p>}><PublicOfferView token={offerRoute[1]} /></Suspense>;
   const surveyRoute = window.location.pathname.match(/^\/encuestas\/capacitacion\/([0-9a-f-]{36})$/);
   if (surveyRoute) return <Suspense fallback={<p className="p-6">Cargando encuesta…</p>}><PublicTrainingSurveyView token={surveyRoute[1]} /></Suspense>;
   const operationsRoute = window.location.pathname.match(/^\/operaciones\/rq\/([a-f0-9]{48})$/);

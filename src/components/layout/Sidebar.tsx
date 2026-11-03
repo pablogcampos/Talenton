@@ -116,6 +116,7 @@ export const Sidebar: React.FC<{ navigationOpen?: boolean; onCloseNavigation?: (
       modKey: 'SELECCION',
       items: selectionItems
     });
+    if (['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION', 'RECLUTADOR'].includes(currentUser.role)) selectionItems.push({ id: 'SELECCION_PROPUESTAS', label: 'Propuesta Laboral', icon: Briefcase, badge: null });
     if (['ADMIN', 'RECLUTADOR', 'ANALISTA_SELECCION'].includes(currentUser.role)) selectionItems.push({ id: 'SELECCION_CAPTACION', label: 'Captación', icon: UserPlus, badge: null });
   }
 
