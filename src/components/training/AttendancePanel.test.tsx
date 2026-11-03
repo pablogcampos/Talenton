@@ -6,7 +6,7 @@ import {limaDate,limaTime,liveAttendanceState,pastAttendanceDates} from './atten
 import type {CandidateRecord} from '../../types';
 import type {AttendanceWindowInfo} from '../../context/TalentContext';
 
-const info:AttendanceWindowInfo={serverNow:'2026-11-03T14:00:00Z',startAt:'2026-11-03T14:00:00Z',closesAt:'2026-11-04T02:30:00Z',state:'OPEN',unlock:null};
+const info:AttendanceWindowInfo={serverNow:'2026-11-03T14:00:00Z',startAt:'2026-11-03T14:00:00Z',closesAt:'2026-11-03T15:00:00Z',state:'OPEN',unlock:null};
 describe('historial y hora de asistencia',()=>{
  it('usa Lima incluso cuando el día UTC ya cambió',()=>{
   expect(limaDate(new Date('2026-11-04T02:30:00Z'))).toBe('2026-11-03');

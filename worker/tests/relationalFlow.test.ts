@@ -172,12 +172,12 @@ describe('Transición relacional PostgreSQL 17',()=>{
   try {
    vi.setSystemTime(new Date('2026-10-26T13:59:59Z'));
    const before=await call(url,'GET',undefined,trainer);
-   expect(before.data).toMatchObject({state:'UPCOMING',startAt:'2026-10-26T14:00:00.000Z',closesAt:'2026-10-27T02:30:00.000Z'});
+   expect(before.data).toMatchObject({state:'UPCOMING',startAt:'2026-10-26T14:00:00.000Z',closesAt:'2026-10-26T15:00:00.000Z'});
    vi.setSystemTime(new Date('2026-10-26T14:00:00Z'));
    expect((await call(url,'GET',undefined,trainer)).data.state).toBe('OPEN');
-   vi.setSystemTime(new Date('2026-10-27T02:30:00Z'));
+   vi.setSystemTime(new Date('2026-10-26T15:00:00Z'));
    expect((await call(url,'GET',undefined,trainer)).data.state).toBe('OPEN');
-   vi.setSystemTime(new Date('2026-10-27T02:30:01Z'));
+   vi.setSystemTime(new Date('2026-10-26T15:00:01Z'));
    expect((await call(url,'GET',undefined,trainer)).data.state).toBe('LOCKED');
   } finally { vi.useRealTimers(); }
   // Un día anterior permite probar la escritura SQL sin depender de la hora real del CI.

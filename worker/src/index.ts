@@ -473,7 +473,7 @@ async function attendanceWindow(env: Env, trainingId: string, date: string) {
   // La marcación es una ventana diaria fija, independiente del horario de clases.
   const startAt = new Date(`${date}T09:00:00-05:00`);
   if (Number.isNaN(startAt.getTime())) throw new Error('INVALID_ATTENDANCE_SCHEDULE');
-  const closesAt = new Date(`${date}T21:30:00-05:00`);
+  const closesAt = new Date(`${date}T10:00:00-05:00`);
   const serverNow = new Date();
   const unlock = await attendanceUnlock(env, trainingId, date);
   const state: AttendanceWindowState = unlockIsActive(unlock, serverNow.getTime())

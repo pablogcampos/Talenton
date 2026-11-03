@@ -50,7 +50,7 @@ export function AttendancePanel({participants,date,setDate,onToday,windowInfo,lo
      {windowInfo&&<p className="mt-2 text-xs text-slate-600">Marcación: {limaTime(windowInfo.startAt).slice(0,5)}–{limaTime(windowInfo.closesAt).slice(0,5)} (Lima)<br/>Para el {attendanceDateLabel(date)}</p>}
      {!loading&&matchesDate&&windowInfo?.unlock?.status==='PENDIENTE'?<><p className="mt-3 text-xs text-amber-800">Solicitud pendiente de aprobación.</p>{canDecide&&<div className="mt-2 flex gap-2"><button className={button} disabled={saving} onClick={()=>onDecision('RECHAZADA')}>Rechazar</button><button className={button} disabled={saving} onClick={()=>onDecision('APROBADA')}>Aprobar</button></div>}</>:!loading&&matchesDate&&state==='LOCKED'&&!canDecide?<button className={button+' mt-3 w-full'} onClick={onUnlock}>Solicitar desbloqueo</button>:null}
     </div>
-    <p className="rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-xs leading-relaxed text-blue-800">La marcación está disponible de <strong>09:00 a 21:30, hora de Lima</strong>. La hora se sincroniza con el servidor. El horario de clases es independiente.</p>
+    <p className="rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-xs leading-relaxed text-blue-800">La marcación está disponible de <strong>09:00 a 10:00, hora de Lima</strong>. La hora se sincroniza con el servidor. El horario de clases es independiente.</p>
    </aside>
   </div>
   {historyOpen&&<section id="past-attendance" className="rounded-xl border border-slate-200 bg-slate-50 p-4">
