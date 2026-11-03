@@ -49,7 +49,8 @@ export const ParticipantesView: React.FC = () => {
   );
 
   const filteredCandidates = trainingCandidates.filter(c => {
-    if (stageFilter === 'EN_CAPACITACION' && c.currentStage !== 'CAPACITACION') return false;
+    if (stageFilter === 'EN_CAPACITACION' && (c.currentStage !== 'CAPACITACION' || c.training?.status === 'PENDIENTE_OJT')) return false;
+    if (stageFilter === 'PENDIENTE_OJT' && c.training?.status !== 'PENDIENTE_OJT') return false;
     if (stageFilter === 'EN_OJT' && c.currentStage !== 'OJT') return false;
     if (stageFilter === 'APTO_ALTA' && c.currentStage !== 'APTO_ALTA') return false;
     if (stageFilter === 'DESERTO' && c.currentStage !== 'BAJA' && c.training?.status !== 'DESERTO') return false;
@@ -118,6 +119,7 @@ export const ParticipantesView: React.FC = () => {
             >
               <option value="TODOS">Todos los Estados</option>
               <option value="EN_CAPACITACION">En Capacitación (Teoría)</option>
+              <option value="PENDIENTE_OJT">Pendiente a OJT</option>
               <option value="EN_OJT">En Piso (OJT)</option>
               <option value="APTO_ALTA">Aptos para Alta</option>
               <option value="DESERTO">Bajas / Deserciones</option>
@@ -176,7 +178,7 @@ export const ParticipantesView: React.FC = () => {
                   const attPercent = attCount > 0 ? Math.round((presentCount / attCount) * 100) : 100;
                   
                   const evals = cand.training?.evaluations || [];
-                  const avg = cand.training?.finalAverage || 
+                  const avg = cand.training?.finalGrade ?? cand.training?.finalAverage ??
                     (evals.length > 0 ? Number((evals.reduce((a, b) => a + b.score, 0) / evals.length).toFixed(1)) : null);
 
                   return (
@@ -220,7 +222,7 @@ export const ParticipantesView: React.FC = () => {
                         ) : (
                           <span className="px-2.5 py-1 bg-indigo-100 text-indigo-800 rounded-lg font-bold text-[11px] inline-flex items-center gap-1">
                             <GraduationCap className="w-3 h-3" />
-                            <span>En Capacitación</span>
+                            <span>{cand.training?.status === 'PENDIENTE_OJT' ? 'Pendiente a OJT' : 'En Capacitación'}</span>
                           </span>
                         )}
                       </td>

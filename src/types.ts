@@ -107,6 +107,7 @@ export type TrainingStatus =
   | 'APROBADO_OJT'
   | 'BAJA_CAPACITACION'
   | 'EN_CAPACITACION'
+  | 'PENDIENTE_OJT'
   | 'EN_OJT'
   | 'APTO_ALTA'
   | 'NO_APTO'
@@ -120,6 +121,7 @@ export type TrainingCohortStatus =
   | 'PENDIENTE_ASIGNACION'
   | 'PROGRAMADA'
   | 'EN_CAPACITACION'
+  | 'PENDIENTE_OJT'
   | 'EN_OJT'
   | 'EXTENSION_OJT'
   | 'FINALIZADA'
@@ -128,6 +130,7 @@ export type TrainingCohortStatus =
 export type ParticipantTrainingStatus = 
   | 'PENDIENTE_INICIO'
   | 'EN_CAPACITACION'
+  | 'PENDIENTE_OJT'
   | 'EN_OJT'
   | 'APTO_ALTA'
   | 'NO_APTO'
@@ -597,6 +600,7 @@ export interface CandidateRecord extends CandidatePreferences {
     attendance: DailyAttendance[];
     evaluations: TrainingEvaluation[];
     finalGrade?: number;
+    theoryCompletedAt?: string;
     dropoutRecord?: DropoutRecord;
     dropoutReason?: string;
     dropoutDate?: string;

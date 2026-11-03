@@ -31,6 +31,7 @@ const statusOptions: { value: 'TODOS' | TrainingCohortStatus; label: string }[] 
   { value: 'PENDIENTE_ASIGNACION', label: 'Por asignar' },
   { value: 'PROGRAMADA', label: 'Programadas' },
   { value: 'EN_CAPACITACION', label: 'En capacitación' },
+  { value: 'PENDIENTE_OJT', label: 'Pendiente a OJT' },
   { value: 'EN_OJT', label: 'En OJT' },
   { value: 'FINALIZADA', label: 'Finalizadas' },
 ];
@@ -40,6 +41,7 @@ const statusLabel = (status: TrainingCohortStatus) => {
     PENDIENTE_ASIGNACION: 'Por asignar',
     PROGRAMADA: 'Programada',
     EN_CAPACITACION: 'En capacitación',
+    PENDIENTE_OJT: 'Pendiente a OJT',
     EN_OJT: 'En OJT',
     EXTENSION_OJT: 'Extensión OJT',
     FINALIZADA: 'Finalizada',
@@ -152,7 +154,7 @@ export const CapacitacionesView: React.FC<CapacitacionesViewProps> = ({ onOpenNe
   }, [selectedCohort]);
 
   const summary = {
-    active: activeCohortList.filter(cohort => ['PROGRAMADA', 'EN_CAPACITACION', 'EN_OJT', 'EXTENSION_OJT'].includes(cohort.status)).length,
+    active: activeCohortList.filter(cohort => ['PROGRAMADA', 'EN_CAPACITACION', 'PENDIENTE_OJT', 'EN_OJT', 'EXTENSION_OJT'].includes(cohort.status)).length,
     pending: activeCohortList.filter(cohort => cohort.status === 'PENDIENTE_ASIGNACION').length,
     training: activeCohortList.filter(cohort => cohort.status === 'EN_CAPACITACION').length,
     ojt: activeCohortList.filter(cohort => cohort.status === 'EN_OJT' || cohort.status === 'EXTENSION_OJT').length,

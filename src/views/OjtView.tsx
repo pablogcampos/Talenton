@@ -57,6 +57,7 @@ export const OjtView: React.FC = () => {
   // Candidates with OJT presence (active OJT, Apto para Alta, or dropped in OJT)
   const ojtCandidates = candidates.filter(c => 
     c.currentStage === 'OJT' || 
+    c.training?.status === 'PENDIENTE_OJT' ||
     c.training?.status === 'EN_OJT' || 
     c.ojt?.status === 'EN_PISO' || 
     c.ojt?.status === 'EN_PROCESO' || 
@@ -67,7 +68,7 @@ export const OjtView: React.FC = () => {
   const [selectedParticipantId, setSelectedParticipantId] = useState<string>(ojtCandidates[0]?.id || '');
   const activeCandidate = candidates.find(c => c.id === selectedParticipantId) || ojtCandidates[0];
 
-  const [statusTab, setStatusTab] = useState<'EN_PISO' | 'APTO_ALTA' | 'TODOS'>('EN_PISO');
+  const [statusTab, setStatusTab] = useState<'PENDIENTE_OJT' | 'EN_PISO' | 'APTO_ALTA' | 'TODOS'>('TODOS');
 
   // Daily metric logger modal
   const [showMetricModal, setShowMetricModal] = useState(false);
@@ -108,6 +109,7 @@ export const OjtView: React.FC = () => {
 
   // Filtered by sub-tab
   const filteredList = ojtCandidates.filter(c => {
+    if (statusTab === 'PENDIENTE_OJT') return c.training?.status === 'PENDIENTE_OJT';
     if (statusTab === 'EN_PISO') return c.currentStage === 'OJT' || c.ojt?.status === 'EN_PISO' || c.ojt?.status === 'EN_PROCESO';
     if (statusTab === 'APTO_ALTA') return c.currentStage === 'APTO_ALTA' || c.ojt?.status === 'APTO_ALTA';
     return true;
@@ -220,6 +222,7 @@ export const OjtView: React.FC = () => {
 
             {/* Filter tabs */}
             <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 text-[11px]">
+              <button onClick={()=>setStatusTab('PENDIENTE_OJT')} className="rounded-lg px-3 py-2 text-xs font-semibold">Pendiente a OJT ({ojtCandidates.filter(c=>c.training?.status==='PENDIENTE_OJT').length})</button>
               <button
                 onClick={() => setStatusTab('EN_PISO')}
                 className={`flex-1 py-1 text-center font-bold rounded-lg transition-colors ${
@@ -278,7 +281,7 @@ export const OjtView: React.FC = () => {
                           ? 'bg-emerald-100 text-emerald-800' 
                           : 'bg-amber-100 text-amber-800'
                       }`}>
-                        {isReadyHiring ? 'Apto Alta' : 'En Piso'}
+                        {cand.training?.status === 'PENDIENTE_OJT' ? 'Pendiente a OJT' : isReadyHiring ? 'Apto Alta' : 'En Piso'}
                       </span>
                     </div>
 
@@ -317,7 +320,7 @@ export const OjtView: React.FC = () => {
                       ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold'
                       : 'bg-amber-100 text-amber-800 border border-amber-300'
                   }`}>
-                    {activeCandidate.currentStage === 'APTO_ALTA' ? 'Apto para Alta' : 'En Piso OJT'}
+                    {activeCandidate.training?.status === 'PENDIENTE_OJT' ? 'Pendiente a OJT' : activeCandidate.currentStage === 'APTO_ALTA' ? 'Apto para Alta' : 'En Piso OJT'}
                   </span>
                 </div>
 
@@ -328,6 +331,12 @@ export const OjtView: React.FC = () => {
                 </div>
               </div>
 
+              {activeCandidate.training?.status === 'PENDIENTE_OJT' && <button disabled={isSaving} className="rounded bg-[#143c55] px-4 py-2 text-white disabled:opacity-50" onClick={async()=>{
+                setIsSaving(true);setActionError('');
+                try{await updateParticipantTrainingStatus(activeCandidate.id,'EN_OJT','Inicio después de finalizar teoría.');}
+                catch(e){setActionError(getWorkerErrorMessage(e,'No se pudo iniciar OJT.'));}
+                finally{setIsSaving(false);}
+              }}>Iniciar OJT</button>}
               {/* Action Buttons: Apto Alta, Extension, Baja */}
               <div className="flex flex-wrap items-center gap-2">
                 {activeCandidate.currentStage !== 'APTO_ALTA' ? (

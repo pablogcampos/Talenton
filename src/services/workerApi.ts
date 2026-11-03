@@ -62,6 +62,8 @@ const WORKER_ERROR_MESSAGES: Record<string, string> = {
   SELECTION_REQUIREMENTS_INCOMPLETE: 'Completa los requisitos de selección antes de continuar.',
   INVALID_TRAINING_TRANSITION: 'El cambio de estado de capacitación no está permitido.',
   INVALID_PARTICIPANT_STATUS: 'Verifica que el grupo esté iniciado y que el participante se encuentre en la etapa correcta.',
+  INVALID_FINAL_GRADES: 'Ingresa una nota final de 0 a 20 para cada participante en capacitación.',
+  NO_PARTICIPANTS_FOR_THEORY: 'No hay participantes pendientes para esta acción. Actualiza el grupo.',
   INVALID_EVALUATION: 'Selecciona una evaluación configurada e ingresa una nota dentro de su escala.',
   INVALID_OJT_STATUS: 'Esta acción requiere un participante con OJT iniciado y un grupo abierto.',
   INVALID_OJT_METRIC: 'Revisa las horas, ventas, fecha y métricas. Calidad debe estar entre 0 y 100.',

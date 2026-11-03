@@ -122,6 +122,13 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect((await call('/api/trainings/'+groupId+'/trainer','POST',{trainerId:trainer,notes:'CI'})).status).toBe(200);
   const bootstrap=await call('/api/bootstrap','GET',undefined,trainer);expect(bootstrap.status).toBe(200);expect(bootstrap.data.cohorts).toHaveLength(1);expect(bootstrap.data.candidates).toHaveLength(1);
   const denied=await call('/api/trainings/'+groupId+'/trainer','POST',{trainerId:other},other);expect(denied.status).not.toBe(200);
+  // El inicio grupal funciona sin ninguna definición de evaluación.
+  expect(bootstrap.data.cohorts[0].evaluationsConfig).toHaveLength(0);
+  expect((await call('/api/trainings/'+groupId+'/theory/start','POST',{},trainer)).data).toMatchObject({status:'EN_CAPACITACION',count:1});
+  expect((await call('/api/trainings/'+groupId+'/theory/finish','POST',{grades:[{candidateId:personId,score:17}]},trainer)).data.status).toBe('PENDIENTE_OJT');
+  // Restablecer únicamente el fixture para probar también las rutas heredadas.
+  await db.query("update talent.training_groups set status='PROGRAMADA' where id=$1",[groupId]);
+  await db.query("update talent.participants set status='PENDIENTE_INICIO',training_approved=false,annotations=annotations-'finalGrade'-'theoryCompletedAt' where group_id=$1",[groupId]);
  });
  it('formación: estado, evaluación, OJT y resultado persisten en relaciones',async()=>{
   const base='/api/trainings/'+groupId+'/participants/'+personId;
@@ -150,6 +157,7 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect((await call(base+'/evaluations','POST',{evaluationId:configs[1].id,score:90,maxScore:1,minRequired:0,result:'NO_APROBADO',definitionSnapshot:{id:'fake',maxScore:1}},trainer)).status).toBe(201);
   const grades=(await call('/api/bootstrap')).data.candidates.find((p:any)=>p.id===personId).training.evaluations;
   expect(grades.find((e:any)=>e.evaluationId===configs[1].id)).toMatchObject({score:90,maxScore:100,minRequired:80,result:'APROBADO'});
+  expect((await call('/api/trainings/'+groupId+'/theory/finish','POST',{grades:[{candidateId:personId,score:18}]},trainer)).status).toBe(200);
   expect((await call('/api/trainings/'+groupId+'/participants/'+personId+'/ojt/start','POST',{reason:'CI'},trainer)).status).toBe(201);
   expect((await call('/api/trainings/'+groupId+'/participants/'+personId+'/ojt/daily','POST',{date:new Date().toISOString().slice(0,10),hoursManaged:4,sales:8,attendance:'PRESENTE',ahtSeconds:240,qaScore:90},trainer)).status).toBe(201);
   expect((await call('/api/trainings/'+groupId+'/participants/'+personId+'/ojt/result','POST',{status:'OJT_APROBADO'},trainer)).status).toBe(201);
@@ -676,5 +684,51 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect(participant.training.evaluations.find((e:any)=>e.evaluationId===config.id)).toMatchObject({score:0,maxScore:20,minRequired:16,result:'NO_APROBADO'});
   expect((await call(path+'/participants/'+personId+'/ojt/start','POST',{},trainer)).status).not.toBe(201);
   expect((await call(path+'/participants/'+personId+'/ojt/result','POST',{status:'OJT_APROBADO'},trainer)).status).not.toBe(201);
+ });
+
+ it('inicio y cierre grupal conserva reprogramados y exige notas para todos los participantes activos',async()=>{
+  const ids:string[]=[];
+  for(const dni of ['99888001','99888002','99888003']){
+   const created=await call('/api/candidates','POST',{dni,fullName:'CI grupo '+dni,phone:'999888001',campaignId,recruiterId:admin,source:'Otro'});
+   expect(created.status).toBe(201);ids.push(created.data.id);
+   expect((await call('/api/candidates/'+created.data.id+'/stage','POST',{stage:'APTO_CAPACITACION'})).status).toBe(200);
+  }
+  const day=new Date().toISOString().slice(0,10);
+  const created=await call('/api/trainings/from-selection','POST',{campaignId,candidateIds:ids,name:'CI grupal',code:'CI-BULK-THEORY',startDate:day,endDate:day,totalDays:1,modality:'PRESENCIAL',schedule:'09:00-16:00'});
+  expect(created.status).toBe(201);const path='/api/trainings/'+created.data.id;
+  expect((await call(path+'/trainer','POST',{trainerId:trainer})).status).toBe(200);
+  expect((await call(path+'/participants/'+ids[2]+'/status','POST',{status:'REPROGRAMADO'},trainer)).status).toBe(201);
+  expect((await call(path+'/theory/start','POST',{},trainer)).data.count).toBe(2);
+  const incomplete=await call(path+'/theory/finish','POST',{grades:[{candidateId:ids[0],score:18}]},trainer);
+  expect(incomplete.status).toBe(400);
+  const before=(await call('/api/bootstrap')).data.candidates;
+  expect(ids.slice(0,2).map(id=>before.find((c:any)=>c.id===id).training.status)).toEqual(['EN_CAPACITACION','EN_CAPACITACION']);
+  expect((await call(path+'/theory/finish','POST',{grades:ids.slice(0,2).map((id,i)=>({candidateId:id,score:18+i}))},trainer)).data).toMatchObject({count:2,status:'PENDIENTE_OJT'});
+  const after=(await call('/api/bootstrap')).data.candidates;
+  expect(after.find((c:any)=>c.id===ids[0]).training).toMatchObject({status:'PENDIENTE_OJT',finalGrade:18});
+  expect(after.find((c:any)=>c.id===ids[1]).training).toMatchObject({status:'PENDIENTE_OJT',finalGrade:19});
+  expect(after.find((c:any)=>c.id===ids[2]).training.status).toBe('REPROGRAMADO');
+ });
+ it('teoría simplificada: cierre atómico conserva el historial sin exigir aprobar evaluaciones antiguas',async()=>{
+  await db.query("update talent.training_groups set status='PROGRAMADA' where id=$1",[groupId]);
+  await db.query("update talent.participants set status='PENDIENTE_INICIO',ojt_status='NO_INICIADO',training_approved=false,annotations=annotations-'finalGrade'-'theoryCompletedAt' where group_id=$1",[groupId]);
+  const path='/api/trainings/'+groupId;
+  const previous=(await call('/api/bootstrap')).data.candidates.find((c:any)=>c.id===personId).training.evaluations.length;
+  expect((await call(path+'/theory/start','POST',{},trainer)).data).toMatchObject({status:'EN_CAPACITACION',count:1});
+  expect((await call(path+'/theory/start','POST',{},trainer)).status).toBe(400);
+  for(const grades of [[],[{candidateId:personId,score:''}],[{candidateId:personId,score:21}],[{candidateId:'ajeno',score:18}],[{candidateId:personId,score:18},{candidateId:personId,score:18}]])
+   expect((await call(path+'/theory/finish','POST',{grades},trainer)).status).toBe(400);
+  expect((await call('/api/bootstrap')).data.candidates.find((c:any)=>c.id===personId).training.status).toBe('EN_CAPACITACION');
+  expect((await call(path+'/participants/'+personId+'/ojt/start','POST',{},trainer)).status).toBe(400);
+  expect([403,404]).toContain((await call(path+'/theory/finish','POST',{grades:[{candidateId:personId,score:0}]},other)).status);
+  expect((await call(path+'/theory/finish','POST',{grades:[{candidateId:personId,score:0}]},trainer)).data.status).toBe('PENDIENTE_OJT');
+  const bootstrap=(await call('/api/bootstrap')).data;
+  const saved=bootstrap.candidates.find((c:any)=>c.id===personId);
+  expect(saved.training).toMatchObject({status:'PENDIENTE_OJT',finalGrade:0});
+  expect(saved.training.evaluations.length).toBe(previous);
+  expect(bootstrap.cohorts.find((g:any)=>g.id===groupId).status).toBe('PENDIENTE_OJT');
+  expect((await call(path+'/theory/finish','POST',{grades:[{candidateId:personId,score:20}]},trainer)).status).toBe(400);
+  expect((await call(path+'/participants/'+personId+'/ojt/start','POST',{},trainer)).status).toBe(201);
+  expect((await call('/api/bootstrap')).data.cohorts.find((g:any)=>g.id===groupId).status).toBe('EN_OJT');
  });
 });

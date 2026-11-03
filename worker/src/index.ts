@@ -543,10 +543,42 @@ async function syncCandidateTraining(env: Env, candidateId: string, participant:
   const currentStage = status === 'EN_OJT' ? 'OJT' : ['OJT_APROBADO', 'APTO_ALTA'].includes(String(status)) ? 'APTO_ALTA' : ['NO_APTO', 'OJT_NO_APROBADO', 'DESERTO', 'NSP'].includes(String(status)) ? 'BAJA' : 'CAPACITACION';
   await firestore(env, `candidates/${candidateId}`, 'PATCH', { fields: fields({
     currentStage,
-    training: { ...training, status, attendance: Array.isArray(participant.attendance) ? participant.attendance : [], evaluations: Array.isArray(participant.evaluations) ? participant.evaluations : [] },
+    training: { ...training, status, finalGrade: participant.finalGrade ?? training.finalGrade, theoryCompletedAt: participant.theoryCompletedAt ?? training.theoryCompletedAt, attendance: Array.isArray(participant.attendance) ? participant.attendance : [], evaluations: Array.isArray(participant.evaluations) ? participant.evaluations : [] },
     ojt: { ...currentOjt, ...participantOjt },
     updatedAt: new Date().toISOString(), updatedBy: actor.uid,
   }) });
+}
+async function trainingTheory(request: Request, env: Env, actor: Profile, trainingId: string, action: string) {
+  const training = await requireTrainingAccess(env, actor, trainingId);
+  const input = await request.json<Record<string, unknown>>();
+  const now = new Date().toISOString();
+  if (action === 'start' && !['PROGRAMADA','EN_CAPACITACION'].includes(String(training.status))) throw new Error('INVALID_TRAINING_TRANSITION');
+  if (action === 'finish' && training.status !== 'EN_CAPACITACION') throw new Error('INVALID_TRAINING_TRANSITION');
+  const ids = Array.isArray(training.participantIds) ? training.participantIds.map(String) : [];
+  const participants = await Promise.all(ids.map(async id => ({id, data: await trainingParticipant(env, trainingId, id)})));
+  const eligible = participants.filter(p => p.data.status === (action === 'start' ? 'PENDIENTE_INICIO' : 'EN_CAPACITACION'));
+  if (!eligible.length) throw new Error('NO_PARTICIPANTS_FOR_THEORY');
+  const grades = Array.isArray(input.grades) ? input.grades : [];
+  if (action === 'finish' && (grades.length !== eligible.length || new Set(grades.map(g => isRecord(g) ? g.candidateId : '')).size !== eligible.length ||
+      eligible.some(p => !grades.some(g => isRecord(g) && g.candidateId === p.id && typeof g.score === 'number' && Number.isFinite(g.score) && g.score >= 0 && g.score <= 20)))) throw new Error('INVALID_FINAL_GRADES');
+  for (const {id, data} of eligible) {
+    const score = action === 'finish' ? (grades.find(g => isRecord(g) && g.candidateId === id) as Record<string, unknown>).score : undefined;
+    const status = action === 'start' ? 'EN_CAPACITACION' : 'PENDIENTE_OJT';
+    const previousHistory = Array.isArray(data.traceability) ? data.traceability : [];
+    const next = {...data, status, ...(action === 'finish' ? {finalGrade: score, theoryCompletedAt: now, trainingApproved: true} : {}),
+      traceability: [...previousHistory, {date: now, userId: actor.uid, userName: actor.displayName, previousStatus: data.status, status, reason: action === 'start' ? 'Inicio de capacitación del grupo.' : 'Etapa teórica finalizada.', ...(action === 'finish' ? {finalGrade: score} : {})}], updatedAt: now};
+    await firestore(env, `trainings/${trainingId}/participants/${id}`, 'PATCH', {fields: fields(next)});
+    await syncCandidateTraining(env, id, next, actor);
+  }
+  const status = action === 'start' ? 'EN_CAPACITACION' : 'PENDIENTE_OJT';
+  const history = Array.isArray(training.managementHistory) ? training.managementHistory : [];
+  await firestore(env, `trainings/${trainingId}`, 'PATCH', {fields: fields({status, updatedAt: now, updatedBy: actor.uid,
+    managementHistory: [...history, {date: now, userId: actor.uid, userName: actor.displayName, previousStatus: training.status, status, reason: action === 'start' ? 'Inicio grupal de capacitación.' : 'Finalización de etapa teórica.', participantCount: eligible.length}]})});
+  return response({ok:true, status, count:eligible.length}, 200, cors(request, env));
+}
+function theoryCompleted(participant: Record<string, unknown>) {
+  return typeof participant.finalGrade === 'number' && Number.isFinite(participant.finalGrade) &&
+    participant.finalGrade >= 0 && participant.finalGrade <= 20 && typeof participant.theoryCompletedAt === 'string';
 }
 async function appendParticipantHistory(request: Request, env: Env, actor: Profile, trainingId: string, candidateId: string, kind: 'attendance' | 'evaluations' | 'status') {
   const training = await requireTrainingAccess(env, actor, trainingId); const participant = await trainingParticipant(env, trainingId, candidateId); const input = await request.json<Record<string, unknown>>(); const now = new Date().toISOString();
@@ -596,12 +628,12 @@ async function ojtParticipant(request: Request, env: Env, actor: Profile, traini
   if (['FINALIZADA', 'CANCELADA'].includes(String(training.status))) throw new Error('INVALID_OJT_STATUS');
   const ojt = isRecord(participant.ojt) ? participant.ojt : {}; const traceability = Array.isArray(ojt.traceability) ? ojt.traceability : [];
   if (action === 'start') {
-    const evaluationsApproved = trainingEvaluationsApproved(training.evaluationsConfig, participant.evaluations);
-    if (participant.status !== 'EN_CAPACITACION' || !evaluationsApproved) throw new Error('PARTICIPANT_NOT_READY_FOR_OJT');
+    if (participant.status !== 'PENDIENTE_OJT' || !theoryCompleted(participant)) throw new Error('PARTICIPANT_NOT_READY_FOR_OJT');
     const next = { ...ojt, status: 'EN_OJT', startDate: limaDay(), traceability: [...traceability, { date: now, userId: actor.uid, userName: actor.displayName, status: 'EN_OJT', reason: typeof input.reason === 'string' ? input.reason : '' }] };
     const updated = { ...participant, trainingApproved: true, status: 'EN_OJT', ojt: next, updatedAt: now };
     await firestore(env, `trainings/${trainingId}/participants/${candidateId}`, 'PATCH', { fields: fields(updated) });
     await syncCandidateTraining(env, candidateId, updated, actor);
+    if (training.status === 'PENDIENTE_OJT') await firestore(env, `trainings/${trainingId}`, 'PATCH', {fields: fields({status:'EN_OJT',updatedAt:now,updatedBy:actor.uid})});
   } else if (action === 'daily') {
     if (participant.status !== 'EN_OJT' || ojt.status !== 'EN_OJT') throw new Error('INVALID_OJT_STATUS');
     const hours = numberValue(input.hoursManaged); const sales = numberValue(input.sales); if (hours <= 0 || sales < 0 || typeof input.date !== 'string') throw new Error('INVALID_OJT_METRIC');
@@ -619,7 +651,7 @@ async function ojtParticipant(request: Request, env: Env, actor: Profile, traini
     await firestore(env, `trainings/${trainingId}/participants/${candidateId}`, 'PATCH', { fields: fields(updated) });
     await syncCandidateTraining(env, candidateId, updated, actor);
   } else {
-    if (participant.status !== 'EN_OJT' || ojt.status !== 'EN_OJT' || !trainingEvaluationsApproved(training.evaluationsConfig, participant.evaluations)) throw new Error('PARTICIPANT_NOT_READY_FOR_OJT');
+    if (participant.status !== 'EN_OJT' || ojt.status !== 'EN_OJT' || !(theoryCompleted(participant) || (participant.trainingApproved === true && trainingEvaluationsApproved(training.evaluationsConfig, participant.evaluations)))) throw new Error('PARTICIPANT_NOT_READY_FOR_OJT');
     const status = input.status; if (typeof status !== 'string' || !['OJT_APROBADO', 'OJT_NO_APROBADO', 'DESERTO', 'NSP', 'REPROGRAMADO'].includes(status)) throw new Error('INVALID_OJT_STATUS');
     const next = { ...ojt, status, resultDate: limaDay(), traceability: [...traceability, { date: now, userId: actor.uid, userName: actor.displayName, status, reason: typeof input.reason === 'string' ? input.reason : '' }] };
     const updated = { ...participant, status, ojt: next, updatedAt: now };
@@ -748,7 +780,7 @@ async function calculateEligibility(env: Env, actor: Profile, candidateId: strin
   const { candidateData, trainingId } = await candidateTrainingAccess(env, actor, candidateId); const participant = await trainingParticipant(env, trainingId, candidateId); const documents = await candidateDocuments(env, candidateId);
   const ojt = isRecord(participant.ojt) ? participant.ojt : {}; const salary = isRecord(candidateData.salaryAccount) ? candidateData.salaryAccount : {};
   const training = await requireTrainingAccess(env, actor, trainingId);
-  const trainingApproved = participant.trainingApproved === true && trainingEvaluationsApproved(training.evaluationsConfig, participant.evaluations);
+  const trainingApproved = participant.trainingApproved === true && (theoryCompleted(participant) || trainingEvaluationsApproved(training.evaluationsConfig, participant.evaluations));
   const ojtApproved = ojt.status === 'OJT_APROBADO' || participant.status === 'OJT_APROBADO';
   const defaultRequiredTypes = ['DNI', 'CV', 'CUL_ANTECEDENTES', 'RECIBO_SERVICIOS']; const requiredDocuments = documents.filter(document => document.isMandatory === true || defaultRequiredTypes.includes(String(document.type))); const validatedRequired = requiredDocuments.filter(document => document.status === 'VALIDATED');
   const validatedTypes = new Set(validatedRequired.map(document => String(document.type))); const documentsComplete = defaultRequiredTypes.every(type => validatedTypes.has(type)) && requiredDocuments.every(document => document.status === 'VALIDATED');
@@ -1146,6 +1178,8 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     if (request.method === 'GET' && trainerMatch) return await availableTrainingTrainers(request, env, actor, decodeURIComponent(trainerMatch[1]));
     if (request.method === 'POST' && trainerMatch) return await assignTrainingTrainer(request, env, actor, decodeURIComponent(trainerMatch[1]));
     const trainingManagementMatch = url.pathname.match(/^\/api\/trainings\/([^/]+)\/management$/);
+    const theoryMatch = url.pathname.match(/^\/api\/trainings\/([^/]+)\/theory\/(start|finish)$/);
+    if (request.method === 'POST' && theoryMatch) return await trainingTheory(request, env, actor, decodeURIComponent(theoryMatch[1]), theoryMatch[2]);
     if (request.method === 'PATCH' && trainingManagementMatch) return await updateTrainingManagement(request, env, actor, decodeURIComponent(trainingManagementMatch[1]));
     const attendanceWindowMatch = url.pathname.match(/^\/api\/trainings\/([^/]+)\/attendance-window$/);
     if (request.method === 'GET' && attendanceWindowMatch) return await attendanceWindowResponse(request, env, actor, decodeURIComponent(attendanceWindowMatch[1]), url.searchParams.get('date') ?? '');
