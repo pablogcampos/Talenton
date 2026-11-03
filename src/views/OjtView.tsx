@@ -1,3 +1,5 @@
+import { TrainingFinalPanel } from '../components/training/TrainingFinalPanel';
+import { limaDay } from '../../shared/trainingRules';
 import React, { useState } from 'react';
 import { 
   Headphones, 
@@ -46,6 +48,7 @@ export const OjtView: React.FC = () => {
     updateOjtSkillsMatrix, 
     addOjtFeedback,
     updateParticipantTrainingStatus,
+    approveParticipantToTalentAlta,
     extendCohortOjt,
     setActiveModule,
     currentUser,
@@ -90,7 +93,7 @@ export const OjtView: React.FC = () => {
   const [fbStrong, setFbStrong] = useState('');
   const [fbImprove, setFbImprove] = useState('');
   const [fbPlan, setFbPlan] = useState('');
-  const [fbDate, setFbDate] = useState(new Date().toISOString().split('T')[0]);
+  const [fbDate, setFbDate] = useState(limaDay());
 
   // Extension modal
   const [showExtensionModal, setShowExtensionModal] = useState(false);
@@ -122,7 +125,7 @@ export const OjtView: React.FC = () => {
     setActionError(''); setIsSaving(true);
     try { await recordOjtDailyMetricForParticipant(activeCandidate.id, {
       dayNumber: dayNum,
-      date: new Date().toISOString().split('T')[0],
+      date: limaDay(),
       hoursWorked: Number(metricHours),
       sales: Number(metricSales),
       sph,
@@ -158,9 +161,16 @@ export const OjtView: React.FC = () => {
 
   const handleApproveAptoAlta = async (candId: string) => {
     setActionError(''); setIsSaving(true);
-    try { await updateParticipantTrainingStatus(candId, 'APTO_ALTA', 'Completó satisfactoriamente el periodo OJT. Apto para contratación.'); } catch (error) { setActionError(getWorkerErrorMessage(error, 'No se pudo actualizar el resultado.')); } finally { setIsSaving(false); }
+    try { await updateParticipantTrainingStatus(candId, 'APTO_ALTA', 'Completó satisfactoriamente el periodo OJT.'); } catch (error) { setActionError(getWorkerErrorMessage(error, 'No se pudo actualizar el resultado.')); } finally { setIsSaving(false); }
   };
 
+  const sendToTalent = async (candidate: CandidateRecord) => {
+    if(isSaving) return;
+    setIsSaving(true); setActionError('');
+    try { await approveParticipantToTalentAlta(candidate.id, 'Requisitos verificados por Formación.'); }
+    catch(e) { setActionError(getWorkerErrorMessage(e, 'No se pudo enviar a Gestión de Talento.')); }
+    finally { setIsSaving(false); }
+  };
   const handleApplyExtension = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeCandidate) return;
@@ -173,6 +183,7 @@ export const OjtView: React.FC = () => {
     <div className="space-y-6 animate-in fade-in duration-200">
       
       {/* Header */}
+      {activeCandidate?.training?.status === 'OJT_APROBADO' && <TrainingFinalPanel participants={[activeCandidate]} saving={isSaving} onAlta={sendToTalent} />}
       {actionError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">{actionError}</div>}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>
@@ -323,11 +334,11 @@ export const OjtView: React.FC = () => {
                   <>
                     <button
                       onClick={() => handleApproveAptoAlta(activeCandidate.id)}
-                      disabled={isSaving}
+                      disabled={isSaving || activeCandidate.training?.status !== 'EN_OJT'}
                       className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5"
                     >
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>Aprobar Apto para Alta</span>
+                      <span>Aprobar OJT</span>
                     </button>
 
                     {canExtendOjt && <button
@@ -341,11 +352,11 @@ export const OjtView: React.FC = () => {
                   </>
                 ) : (
                   <button
-                    onClick={() => setActiveModule('TALENTO_CONTRATACIONES')}
+                    onClick={() => setActiveModule('FORMACION_MIS_CAPACITACIONES')}
                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
                   >
                     <Briefcase className="w-4 h-4" />
-                    <span>Ver en Contrataciones</span>
+                    <span>Ver capacitación</span>
                   </button>
                 )}
 

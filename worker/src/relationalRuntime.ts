@@ -46,6 +46,18 @@ export class RelationalRuntime {
  }
  async load(){this.hash=this.publicToken?await digest(this.publicToken):null;this.snapshot=this.actorId&&this.env.ORG_ENABLED==='true'?await this.rpc('talent_org_snapshot',{p_actor:this.actorId,p_company:this.env.ORG_COMPANY}):await this.rpc('talent_runtime_snapshot',{p_actor:this.actorId,p_public_hash:this.hash});return this;}
  get companyId(){return this.snapshot.companyId;}
+ async requestUnlock(group:string,day:string,reason:string){
+  const id=await this.rpc<string>('talent_unlock_request',{p_actor:this.actorId,p_company:this.companyId,p_group:group,p_day:day,p_reason:reason});
+  this.documents.clear();await this.load();
+  return this.get('attendanceUnlockRequests/'+id);
+ }
+ async decideUnlock(id:string,approve:boolean,reason:string,expiresAt:string|null){
+  const request=this.find('attendance_unlocks',id);
+  if(!request)throw new SupabaseError(404,'ATTENDANCE_UNLOCK_NOT_FOUND');
+  await this.rpc('talent_unlock_decide',{p_actor:this.actorId,p_company:this.companyId,p_unlock:id,p_expected:request.version,p_approve:approve,p_reason:reason,p_expires:expiresAt});
+  this.documents.clear();await this.load();
+  return this.get('attendanceUnlockRequests/'+id);
+ }
  async captureCatalog():Promise<{companyName:string;campaigns:import('../../shared/techCenterForm').CaptureCampaignOption[]}>{
   if(!this.hash)throw new SupabaseError(403,'FORBIDDEN');
   return this.rpc('talent_capture_catalog',{p_hash:this.hash});
@@ -289,7 +301,7 @@ export class RelationalRuntime {
  }
  private serializeParticipant(pid:string,d:D,person:string){
   const p=this.find('participants',pid)!;
-  const o=d.ojt||{};this.put('participants',pid,{ojt_status:o.status||p.ojt_status,training_approved:d.trainingApproved===true||['EN_OJT','OJT_APROBADO'].includes(d.status),annotations:{...p.annotations,ojtMeta:Object.fromEntries(Object.entries(o).filter(([k])=>!['status','dailyMetrics','skillsMatrix','coachingFeedbacks','traceability'].includes(k)))}});
+  const o=d.ojt||{};this.put('participants',pid,{ojt_status:o.status||p.ojt_status,training_approved:d.trainingApproved===true,annotations:{...p.annotations,ojtMeta:Object.fromEntries(Object.entries(o).filter(([k])=>!['status','dailyMetrics','skillsMatrix','coachingFeedbacks','traceability'].includes(k)))}});
   for(const a of d.attendance||[]){const day=date(a.date)!;const previous=this.find('attendance',pid+':attendance:'+day);if(previous&&previous.status===(a.attendance||a.status)&&String(previous.notes||'')===String(a.notes||a.observation||''))continue;this.ensureDay(p.group_id,day,a.dayNumber||1);this.put('attendance',pid+':attendance:'+day,{group_id:p.group_id,participant_id:pid,day_date:day,status:a.attendance||a.status,notes:a.notes||a.observation||null,marked_by:a.trainerId||this.actorId,annotations:a});}
   for(const e of d.evaluations||[])this.evaluation(e,person,p.application_id,pid);
   for(let i=0;i<(o.dailyMetrics||[]).length;i++){const m=o.dailyMetrics[i];this.put('ojt_metrics',pid+':ojt:'+date(m.date),{participant_id:pid,day_date:date(m.date),day_number:m.dayNumber||i+1,attendance_status:m.attendance||null,hours_worked:m.hoursManaged??m.hoursWorked??0,sales:m.sales||0,calls:m.calls||0,leads:m.leads||0,conversions:m.conversions||0,aht_seconds:m.ahtSeconds||null,qa_score:m.qaScore||null,observations:m.observations||'',coach_feedback:m.feedback||m.coachFeedback||'',annotations:m});}

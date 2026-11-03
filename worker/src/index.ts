@@ -1,3 +1,4 @@
+import { limaDay, trainingDayNumber, unlockIsActive, evaluationDefinition, validEvaluationDefinition, trainingEvaluationsApproved } from '../../shared/trainingRules';
 import { handleCapture, CaptureError } from './capture';
 import { candidatePreferences } from './candidatePreferences';
 import { relationalSession, changeFirstPassword, type SessionProfile } from './supabaseSession';
@@ -475,7 +476,7 @@ async function attendanceWindow(env: Env, trainingId: string, date: string) {
   const closesAt = new Date(`${date}T21:30:00-05:00`);
   const serverNow = new Date();
   const unlock = await attendanceUnlock(env, trainingId, date);
-  const state: AttendanceWindowState = unlock?.status === 'APROBADA'
+  const state: AttendanceWindowState = unlockIsActive(unlock, serverNow.getTime())
     ? 'UNLOCKED'
     : serverNow < startAt ? 'UPCOMING' : serverNow <= closesAt ? 'OPEN' : 'LOCKED';
   return { serverNow: serverNow.toISOString(), startAt: startAt.toISOString(), closesAt: closesAt.toISOString(), state, unlock };
@@ -492,7 +493,11 @@ async function requestAttendanceUnlock(request: Request, env: Env, actor: Profil
   const window = await attendanceWindow(env, trainingId, date);
   if (window.state === 'OPEN' || window.state === 'UPCOMING') throw new Error('ATTENDANCE_WINDOW_NOT_LOCKED');
   const now = new Date().toISOString(); const id = attendanceUnlockId(trainingId, date);
-  if (window.unlock?.status === 'PENDIENTE' || window.unlock?.status === 'APROBADA') throw new Error('ATTENDANCE_UNLOCK_ALREADY_REQUESTED');
+  if (window.unlock?.status === 'PENDIENTE' || window.state === 'UNLOCKED') throw new Error('ATTENDANCE_UNLOCK_ALREADY_REQUESTED');
+  if (env.RELATIONAL_RUNTIME) {
+    const record = await env.RELATIONAL_RUNTIME.requestUnlock(trainingId, date, reason);
+    return response(record, 201, cors(request, env));
+  }
   const record = { id, trainingId, date, companyId: actor.companyId, campaignId: training.campaignId, trainerId: actor.uid, trainerName: actor.displayName, reason, status: 'PENDIENTE', requestedAt: now, requestedBy: actor.uid, audit: [{ action: 'SOLICITADA', at: now, by: actor.uid, byName: actor.displayName, reason }] };
   await firestore(env, `attendanceUnlockRequests/${id}`, 'PATCH', { fields: fields(record) });
   await writeAdminAudit(env, actor, 'ATTENDANCE_UNLOCK_REQUESTED', id, null, { trainingId, date, reason });
@@ -501,10 +506,15 @@ async function requestAttendanceUnlock(request: Request, env: Env, actor: Profil
 async function decideAttendanceUnlock(request: Request, env: Env, actor: Profile, trainingId: string, date: string) {
   await requireTrainingManagerAccess(env, actor, trainingId); const current = await attendanceUnlock(env, trainingId, date);
   if (!current) throw new Error('ATTENDANCE_UNLOCK_NOT_FOUND');
+  if (current.status !== 'PENDIENTE') throw new Error('ATTENDANCE_UNLOCK_ALREADY_REQUESTED');
   const input = await request.json<Record<string, unknown>>(); const decision = String(input.decision ?? ''); const reason = String(input.reason ?? '').trim();
   if (!['APROBADA', 'RECHAZADA'].includes(decision)) throw new Error('INVALID_ATTENDANCE_UNLOCK_DECISION');
   const now = new Date().toISOString(); const id = attendanceUnlockId(trainingId, date); const audit = Array.isArray(current.audit) ? current.audit : [];
-  const next = { ...current, status: decision, decisionReason: reason, decidedAt: now, decidedBy: actor.uid, decidedByName: actor.displayName, audit: [...audit, { action: decision, at: now, by: actor.uid, byName: actor.displayName, reason }] };
+  if (env.RELATIONAL_RUNTIME) {
+    const next = await env.RELATIONAL_RUNTIME.decideUnlock(id, decision === 'APROBADA', reason || (decision === 'APROBADA' ? 'Corrección de asistencia autorizada.' : 'Solicitud rechazada.'), decision === 'APROBADA' ? new Date(Date.now()+30*60000).toISOString() : null);
+    return response(next, 200, cors(request, env));
+  }
+  const next = { ...current, status: decision, expiresAt: decision === 'APROBADA' ? new Date(Date.now() + 30 * 60000).toISOString() : null, decisionReason: reason, decidedAt: now, decidedBy: actor.uid, decidedByName: actor.displayName, audit: [...audit, { action: decision, at: now, by: actor.uid, byName: actor.displayName, reason }] };
   await firestore(env, `attendanceUnlockRequests/${id}`, 'PATCH', { fields: fields(next) });
   await writeAdminAudit(env, actor, decision === 'APROBADA' ? 'ATTENDANCE_UNLOCK_APPROVED' : 'ATTENDANCE_UNLOCK_REJECTED', id, current, next);
   return response(next, 200, cors(request, env));
@@ -514,7 +524,7 @@ async function updateTrainingManagement(request: Request, env: Env, actor: Profi
   if (operation === 'COORDINATOR') { if (typeof input.coordinatorId !== 'string' || typeof input.coordinatorName !== 'string') throw new Error('INVALID_COORDINATOR'); await firestore(env, `trainings/${trainingId}`, 'PATCH', { fields: fields({ coordinatorId: input.coordinatorId, coordinatorName: input.coordinatorName, updatedAt: now, updatedBy: actor.uid }) }); }
   else if (operation === 'STATUS') { const status = String(input.status ?? ''); const transitions: Record<string, string[]> = { PENDIENTE_ASIGNACION: ['PROGRAMADA', 'CANCELADA'], PROGRAMADA: ['EN_CAPACITACION', 'CANCELADA'], EN_CAPACITACION: ['EN_OJT', 'CANCELADA'], EN_OJT: ['EXTENSION_OJT', 'FINALIZADA'], EXTENSION_OJT: ['FINALIZADA'] }; if (!transitions[String(training.status ?? '')]?.includes(status)) throw new Error('INVALID_TRAINING_TRANSITION'); await firestore(env, `trainings/${trainingId}`, 'PATCH', { fields: fields({ status, statusReason: typeof input.reason === 'string' ? input.reason : '', updatedAt: now, updatedBy: actor.uid }) }); }
   else if (operation === 'DETAILS') { const allowed = ['name', 'startDate', 'endDate', 'schedule', 'modality', 'location', 'roomOrLink', 'observations']; const patch: Record<string, unknown> = {}; for (const field of allowed) if (input[field] !== undefined) patch[field] = input[field]; if (!Object.keys(patch).length) throw new Error('INVALID_TRAINING_DATA'); await firestore(env, `trainings/${trainingId}`, 'PATCH', { fields: fields({ ...patch, updatedAt: now, updatedBy: actor.uid }) }); }
-  else if (operation === 'EVALUATION_CONFIG') { const config = isRecord(input.config) ? input.config : {}; if (!String(config.name ?? '').trim() || numberValue(config.maxScore) <= 0 || numberValue(config.minScore) < 0) throw new Error('INVALID_EVALUATION'); const list = Array.isArray(training.evaluationsConfig) ? training.evaluationsConfig : []; await firestore(env, `trainings/${trainingId}`, 'PATCH', { fields: fields({ evaluationsConfig: [...list, { ...config, id: `EV-${crypto.randomUUID()}` }], updatedAt: now, updatedBy: actor.uid }) }); }
+  else if (operation === 'EVALUATION_CONFIG') { const config = isRecord(input.config) ? input.config : {}; if (!validEvaluationDefinition(config)) throw new Error('INVALID_EVALUATION'); const list = Array.isArray(training.evaluationsConfig) ? training.evaluationsConfig : []; await firestore(env, `trainings/${trainingId}`, 'PATCH', { fields: fields({ evaluationsConfig: [...list, { ...config, id: `EV-${crypto.randomUUID()}` }], updatedAt: now, updatedBy: actor.uid }) }); }
   else if (operation === 'OJT_EXTENSION') { const days = numberValue(input.additionalDays); if (days < 1 || days > 30 || !String(input.reason ?? '').trim()) throw new Error('INVALID_OJT_EXTENSION'); await firestore(env, `trainings/${trainingId}`, 'PATCH', { fields: fields({ ojtExtensionDays: numberValue(training.ojtExtensionDays) + days, status: 'EXTENSION_OJT', extensionReason: input.reason, updatedAt: now, updatedBy: actor.uid }) }); }
   else throw new Error('INVALID_TRAINING_OPERATION');
   return response({ ok: true }, 200, cors(request, env));
@@ -536,6 +546,7 @@ async function syncCandidateTraining(env: Env, candidateId: string, participant:
 async function appendParticipantHistory(request: Request, env: Env, actor: Profile, trainingId: string, candidateId: string, kind: 'attendance' | 'evaluations' | 'status') {
   const training = await requireTrainingAccess(env, actor, trainingId); const participant = await trainingParticipant(env, trainingId, candidateId); const input = await request.json<Record<string, unknown>>(); const now = new Date().toISOString();
   if (kind === 'status') {
+    if (input.status === 'EN_CAPACITACION' && training.status !== 'EN_CAPACITACION') throw new Error('INVALID_PARTICIPANT_STATUS');
     const status = input.status;
     const transitions: Record<string, string[]> = { PENDIENTE_INICIO: ['EN_CAPACITACION', 'REPROGRAMADO'], EN_CAPACITACION: ['NO_APTO', 'REPROGRAMADO'], REPROGRAMADO: ['PENDIENTE_INICIO', 'EN_CAPACITACION'] };
     if (typeof status !== 'string' || !transitions[String(participant.status ?? 'PENDIENTE_INICIO')]?.includes(status)) throw new Error('INVALID_PARTICIPANT_STATUS');
@@ -546,13 +557,27 @@ async function appendParticipantHistory(request: Request, env: Env, actor: Profi
   } else {
     const field = kind; const history = Array.isArray(participant[field]) ? participant[field] : []; const entry = { ...input, id: `${kind}-${crypto.randomUUID()}`, candidateId, recordedAt: now, trainerId: actor.uid, trainerName: actor.displayName };
     if (kind === 'attendance' && (typeof input.date !== 'string' || !['PRESENTE', 'TARDANZA', 'FALTA', 'JUSTIFICADO', 'NSP', 'FALTA_JUSTIFICADA', 'FALTA_INJUSTIFICADA'].includes(String(input.attendance ?? input.status)))) throw new Error('INVALID_ATTENDANCE');
-    if (kind === 'evaluations') { const score = numberValue(input.score, -1); const maxScore = numberValue(input.maxScore, -1); const evaluationId = String(input.evaluationId ?? ''); if (!evaluationId || !String(input.name ?? input.moduleName ?? '').trim() || score < 0 || maxScore <= 0 || score > maxScore || !['APROBADO', 'NO_APROBADO'].includes(String(input.result ?? ''))) throw new Error('INVALID_EVALUATION'); if (history.some(item => isRecord(item) && String(item.evaluationId ?? '') === evaluationId)) throw new Error('EVALUATION_ALREADY_RECORDED'); }
+    if (kind === 'evaluations') {
+      if (participant.status !== 'EN_CAPACITACION' || ['FINALIZADA', 'CANCELADA'].includes(String(training.status))) throw new Error('INVALID_PARTICIPANT_STATUS');
+      const evaluationId = String(input.evaluationId ?? '');
+      const definition = evaluationDefinition(training.evaluationsConfig, evaluationId);
+      if (!definition || !validEvaluationDefinition(definition)) throw new Error('INVALID_EVALUATION');
+      const score = input.score;
+      if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > Number(definition.maxScore)) throw new Error('INVALID_EVALUATION');
+      if (history.some(item => isRecord(item) && String(item.evaluationId ?? item.definitionId ?? '') === evaluationId)) throw new Error('EVALUATION_ALREADY_RECORDED');
+      // Never persist client-supplied thresholds, results or definition snapshots.
+      Object.keys(entry).forEach(key => delete (entry as Record<string, unknown>)[key]);
+      Object.assign(entry, { id: `evaluations-${crypto.randomUUID()}`, candidateId, evaluationId,
+        name: definition.name, moduleName: definition.name, score, maxScore: definition.maxScore,
+        minRequired: definition.minScore, result: score >= Number(definition.minScore) ? 'APROBADO' : 'NO_APROBADO',
+        date: limaDay(), recordedAt: now, trainerId: actor.uid, trainerName: actor.displayName });
+    }
     let nextHistory = [...history, entry];
     if (kind === 'attendance' && typeof input.date === 'string') {
       const window = await attendanceWindow(env, trainingId, input.date);
       if (window.state !== 'OPEN' && window.state !== 'UNLOCKED') throw new Error('ATTENDANCE_WINDOW_LOCKED');
       const previous = history.find(item => isRecord(item) && item.date === input.date);
-      nextHistory = [...history.filter(item => !isRecord(item) || item.date !== input.date), { ...entry, editedAfterUnlock: window.state === 'UNLOCKED', previousValue: previous ?? null }];
+      nextHistory = [...history.filter(item => !isRecord(item) || item.date !== input.date), { ...entry, dayNumber: trainingDayNumber(String(training.startDate ?? input.date), input.date), editedAfterUnlock: window.state === 'UNLOCKED', previousValue: previous ?? null }];
       if (window.state === 'UNLOCKED') await writeAdminAudit(env, actor, 'ATTENDANCE_UPDATED_AFTER_UNLOCK', `${trainingId}:${candidateId}:${input.date}`, previous ?? null, entry);
     }
     const next = { ...participant, candidateId, [field]: nextHistory, updatedAt: now };
@@ -562,25 +587,36 @@ async function appendParticipantHistory(request: Request, env: Env, actor: Profi
   return response({ ok: true }, 201, cors(request, env));
 }
 async function ojtParticipant(request: Request, env: Env, actor: Profile, trainingId: string, candidateId: string, action: 'start' | 'daily' | 'result') {
-  await requireTrainingAccess(env, actor, trainingId); const participant = await trainingParticipant(env, trainingId, candidateId); const input = await request.json<Record<string, unknown>>(); const now = new Date().toISOString();
+  const training = await requireTrainingAccess(env, actor, trainingId); const participant = await trainingParticipant(env, trainingId, candidateId); const input = await request.json<Record<string, unknown>>(); const now = new Date().toISOString();
+  if (['FINALIZADA', 'CANCELADA'].includes(String(training.status))) throw new Error('INVALID_OJT_STATUS');
   const ojt = isRecord(participant.ojt) ? participant.ojt : {}; const traceability = Array.isArray(ojt.traceability) ? ojt.traceability : [];
   if (action === 'start') {
-    const evaluations = Array.isArray(participant.evaluations) ? participant.evaluations : []; const evaluationsApproved = evaluations.length > 0 && evaluations.every(item => isRecord(item) && (item.result === 'APROBADO' || item.passed === true));
+    const evaluationsApproved = trainingEvaluationsApproved(training.evaluationsConfig, participant.evaluations);
     if (participant.status !== 'EN_CAPACITACION' || !evaluationsApproved) throw new Error('PARTICIPANT_NOT_READY_FOR_OJT');
-    const next = { ...ojt, status: 'EN_OJT', startDate: now.slice(0, 10), traceability: [...traceability, { date: now, userId: actor.uid, userName: actor.displayName, status: 'EN_OJT', reason: typeof input.reason === 'string' ? input.reason : '' }] };
-    const updated = { ...participant, status: 'EN_OJT', ojt: next, updatedAt: now };
+    const next = { ...ojt, status: 'EN_OJT', startDate: limaDay(), traceability: [...traceability, { date: now, userId: actor.uid, userName: actor.displayName, status: 'EN_OJT', reason: typeof input.reason === 'string' ? input.reason : '' }] };
+    const updated = { ...participant, trainingApproved: true, status: 'EN_OJT', ojt: next, updatedAt: now };
     await firestore(env, `trainings/${trainingId}/participants/${candidateId}`, 'PATCH', { fields: fields(updated) });
     await syncCandidateTraining(env, candidateId, updated, actor);
   } else if (action === 'daily') {
+    if (participant.status !== 'EN_OJT' || ojt.status !== 'EN_OJT') throw new Error('INVALID_OJT_STATUS');
     const hours = numberValue(input.hoursManaged); const sales = numberValue(input.sales); if (hours <= 0 || sales < 0 || typeof input.date !== 'string') throw new Error('INVALID_OJT_METRIC');
     const history = Array.isArray(ojt.dailyMetrics) ? ojt.dailyMetrics : []; if (history.some(item => isRecord(item) && item.date === input.date)) throw new Error('OJT_DAY_ALREADY_RECORDED');
-    const metric = { id: `OJT-${crypto.randomUUID()}`, date: input.date, attendance: input.attendance, hoursManaged: hours, sales, sph: Number((sales / hours).toFixed(2)), spd: Number(sales.toFixed(2)), feedback: input.feedback, observations: input.observations, trainerId: actor.uid, trainerName: actor.displayName, recordedAt: now };
+    const extra: Record<string, number> = {};
+    for (const key of ['ahtSeconds', 'qaScore', 'calls', 'leads', 'conversions']) {
+      if (input[key] === undefined) continue;
+      const value = input[key];
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || (key === 'qaScore' && value > 100) || (['calls', 'leads', 'conversions'].includes(key) && !Number.isInteger(value))) throw new Error('INVALID_OJT_METRIC');
+      extra[key] = value;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(input.date)) || !Number.isFinite(Date.parse(String(input.date)+'T12:00:00Z')) || !Number.isInteger(sales)) throw new Error('INVALID_OJT_METRIC');
+    const metric = { ...extra, id: `OJT-${crypto.randomUUID()}`, date: input.date, attendance: input.attendance, hoursManaged: hours, sales, sph: Number((sales / hours).toFixed(2)), spd: Number(sales.toFixed(2)), feedback: input.feedback, observations: input.observations, trainerId: actor.uid, trainerName: actor.displayName, recordedAt: now };
     const updated = { ...participant, ojt: { ...ojt, dailyMetrics: [...history, metric] }, updatedAt: now };
     await firestore(env, `trainings/${trainingId}/participants/${candidateId}`, 'PATCH', { fields: fields(updated) });
     await syncCandidateTraining(env, candidateId, updated, actor);
   } else {
+    if (participant.status !== 'EN_OJT' || ojt.status !== 'EN_OJT' || !trainingEvaluationsApproved(training.evaluationsConfig, participant.evaluations)) throw new Error('PARTICIPANT_NOT_READY_FOR_OJT');
     const status = input.status; if (typeof status !== 'string' || !['OJT_APROBADO', 'OJT_NO_APROBADO', 'DESERTO', 'NSP', 'REPROGRAMADO'].includes(status)) throw new Error('INVALID_OJT_STATUS');
-    const next = { ...ojt, status, resultDate: now.slice(0, 10), traceability: [...traceability, { date: now, userId: actor.uid, userName: actor.displayName, status, reason: typeof input.reason === 'string' ? input.reason : '' }] };
+    const next = { ...ojt, status, resultDate: limaDay(), traceability: [...traceability, { date: now, userId: actor.uid, userName: actor.displayName, status, reason: typeof input.reason === 'string' ? input.reason : '' }] };
     const updated = { ...participant, status, ojt: next, updatedAt: now };
     await firestore(env, `trainings/${trainingId}/participants/${candidateId}`, 'PATCH', { fields: fields(updated) });
     await syncCandidateTraining(env, candidateId, updated, actor);
@@ -706,7 +742,8 @@ type Eligibility = { eligible: boolean; trainingApproved: boolean; ojtApproved: 
 async function calculateEligibility(env: Env, actor: Profile, candidateId: string): Promise<Eligibility> {
   const { candidateData, trainingId } = await candidateTrainingAccess(env, actor, candidateId); const participant = await trainingParticipant(env, trainingId, candidateId); const documents = await candidateDocuments(env, candidateId);
   const ojt = isRecord(participant.ojt) ? participant.ojt : {}; const salary = isRecord(candidateData.salaryAccount) ? candidateData.salaryAccount : {};
-  const trainingApproved = ['EN_OJT', 'OJT_APROBADO'].includes(String(participant.status)) || participant.trainingApproved === true;
+  const training = await requireTrainingAccess(env, actor, trainingId);
+  const trainingApproved = participant.trainingApproved === true && trainingEvaluationsApproved(training.evaluationsConfig, participant.evaluations);
   const ojtApproved = ojt.status === 'OJT_APROBADO' || participant.status === 'OJT_APROBADO';
   const defaultRequiredTypes = ['DNI', 'CV', 'CUL_ANTECEDENTES', 'RECIBO_SERVICIOS']; const requiredDocuments = documents.filter(document => document.isMandatory === true || defaultRequiredTypes.includes(String(document.type))); const validatedRequired = requiredDocuments.filter(document => document.status === 'VALIDATED');
   const validatedTypes = new Set(validatedRequired.map(document => String(document.type))); const documentsComplete = defaultRequiredTypes.every(type => validatedTypes.has(type)) && requiredDocuments.every(document => document.status === 'VALIDATED');

@@ -1,3 +1,4 @@
+import { TrainingPreparation } from '../components/training/TrainingPreparation';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Calendar,
@@ -335,6 +336,7 @@ export const CapacitacionesView: React.FC<CapacitacionesViewProps> = ({ onOpenNe
               </div>
 
               <div className="p-4">
+                <TrainingPreparation cohort={selectedCohort} />
                 {activeTab === 'RESUMEN' && (
                   <div className="space-y-4">
                     <div className="grid overflow-hidden rounded-xl border border-[#DCE5EA] bg-[#F8FAFC] sm:grid-cols-2 xl:grid-cols-4">

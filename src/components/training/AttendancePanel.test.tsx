@@ -17,7 +17,10 @@ describe('historial y hora de asistencia',()=>{
   expect(liveAttendanceState(info,Date.parse(info.startAt))).toBe('OPEN');
   expect(liveAttendanceState(info,Date.parse(info.closesAt))).toBe('OPEN');
   expect(liveAttendanceState(info,Date.parse(info.closesAt)+1000)).toBe('LOCKED');
-  expect(liveAttendanceState({...info,state:'UNLOCKED'},Date.parse(info.closesAt)+1000)).toBe('UNLOCKED');
+  const unlock = {id:'u',trainingId:'g',date:'2026-11-03',reason:'Corrección',status:'APROBADA' as const,requestedAt:info.startAt,decidedAt:info.closesAt,expiresAt:'2026-11-04T03:00:00Z'};
+  expect(liveAttendanceState({...info,state:'UNLOCKED',unlock},Date.parse(info.closesAt)+1000)).toBe('UNLOCKED');
+  expect(liveAttendanceState({...info,state:'UNLOCKED',unlock},Date.parse(unlock.expiresAt))).toBe('LOCKED');
+  expect(liveAttendanceState({...info,state:'UNLOCKED'},Date.parse(info.closesAt)+1000)).toBe('LOCKED');
  });
  it('incluye todos los días registrados, sábados y domingos, sin límite de doce',()=>{
   const dates=Array.from({length:20},(_,i)=>'2026-10-'+String(i+1).padStart(2,'0'));

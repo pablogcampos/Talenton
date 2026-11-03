@@ -1,3 +1,4 @@
+import { unlockIsActive } from '../../../shared/trainingRules';
 import type { AttendanceWindowInfo } from '../../context/TalentContext';
 
 export const limaDate = (value: Date | number = new Date()) => new Intl.DateTimeFormat('en-CA', {
@@ -10,7 +11,7 @@ export const attendanceDateLabel = (value: string) => new Intl.DateTimeFormat('e
  timeZone: 'America/Lima', day: '2-digit', month: 'long', year: 'numeric',
 }).format(new Date(value + 'T12:00:00-05:00'));
 export function liveAttendanceState(info: AttendanceWindowInfo, now: number): AttendanceWindowInfo['state'] {
- if(info.state === 'UNLOCKED') return 'UNLOCKED';
+ if(unlockIsActive(info.unlock, now)) return 'UNLOCKED';
  return now < Date.parse(info.startAt) ? 'UPCOMING' : now <= Date.parse(info.closesAt) ? 'OPEN' : 'LOCKED';
 }
 export function pastAttendanceDates(participants: {training?: {attendance?: {date:string}[]}}[], today: string) {

@@ -57,7 +57,7 @@ describe('Transición relacional PostgreSQL 17',()=>{
     else if(fn==='talent_session_profile')result=await db.query('select public.talent_session_profile($1::uuid) as result',[body.p_auth]);
     else if(fn==='talent_runtime_snapshot')result=await db.query('select public.talent_runtime_snapshot($1::uuid,$2) as result',[body.p_actor,body.p_public_hash]);
     else if(fn==='talent_runtime_commit'){if(failNextCaptureCommit){failNextCaptureCommit=false;throw new Error('SIMULATED_COMMIT_FAILURE');}result=await db.query('select public.talent_runtime_commit($1::uuid,$2,$3,$4,$5::jsonb,$6::text[]) as result',[body.p_actor,body.p_public_hash,body.p_company,body.p_revision,JSON.stringify(body.p_rows),body.p_resets||[]]);}
-    else if(fn?.startsWith('talent_org_')||fn?.startsWith('talent_survey_')){const keys=Object.keys(body);result=await db.query('select public.'+fn+'('+keys.map((k,i)=>k+'=> $'+(i+1)).join(',')+') as result',keys.map(k=>['p_rows','p_grants'].includes(k)?JSON.stringify(body[k]):Array.isArray(body[k])?'{'+body[k].join(',')+'}':body[k]&&typeof body[k]==='object'?JSON.stringify(body[k]):body[k]));}
+    else if(fn?.startsWith('talent_org_')||fn?.startsWith('talent_survey_')||fn?.startsWith('talent_unlock_')){const keys=Object.keys(body);result=await db.query('select public.'+fn+'('+keys.map((k,i)=>k+'=> $'+(i+1)).join(',')+') as result',keys.map(k=>['p_rows','p_grants'].includes(k)?JSON.stringify(body[k]):Array.isArray(body[k])?'{'+body[k].join(',')+'}':body[k]&&typeof body[k]==='object'?JSON.stringify(body[k]):body[k]));}
     else throw new Error('UNKNOWN_RPC '+fn);
     await db.exec('commit');return fn==='talent_runtime_commit'?new Response(null,{status:204}):Response.json(result.rows[0].result??null);
    }catch(e:any){await db.exec('rollback');console.log('SQL ERROR',e.code,e.message);return Response.json({code:e.code,message:e.message},{status:e.code==='PT409'?409:400});}
@@ -124,13 +124,28 @@ describe('Transición relacional PostgreSQL 17',()=>{
   const denied=await call('/api/trainings/'+groupId+'/trainer','POST',{trainerId:other},other);expect(denied.status).not.toBe(200);
  });
  it('formación: estado, evaluación, OJT y resultado persisten en relaciones',async()=>{
+  const base='/api/trainings/'+groupId+'/participants/'+personId;
+  expect((await call(base+'/ojt/result','POST',{status:'OJT_APROBADO'},trainer)).status).not.toBe(201);
+  expect((await call(base+'/ojt/daily','POST',{date:'2026-11-03',hoursManaged:4,sales:8},trainer)).status).not.toBe(201);
+  expect((await call(base+'/status','POST',{status:'EN_CAPACITACION'},trainer)).status).not.toBe(201);
+  expect((await call('/api/trainings/'+groupId+'/management','PATCH',{operation:'EVALUATION_CONFIG',config:{name:'CI módulo',maxScore:100,minScore:80}},trainer)).status).toBe(403);
+  for(const name of ['CI módulo','CI segundo módulo'])
+    expect((await call('/api/trainings/'+groupId+'/management','PATCH',{operation:'EVALUATION_CONFIG',config:{name,maxScore:100,minScore:80}})).status).toBe(200);
+  const configs=(await call('/api/bootstrap')).data.cohorts.find((g:any)=>g.id===groupId).evaluationsConfig;
+  const evalId=configs[0].id;
   expect((await call('/api/trainings/'+groupId+'/management','PATCH',{operation:'STATUS',status:'EN_CAPACITACION'})).status).toBe(200);
   expect((await call('/api/trainings/'+groupId+'/participants/'+personId+'/status','POST',{status:'EN_CAPACITACION'},trainer)).status).toBe(201);
-  const evaluated=await call('/api/trainings/'+groupId+'/participants/'+personId+'/evaluations','POST',{evaluationId:'ci-eval',name:'CI módulo',moduleName:'CI módulo',score:95,maxScore:100,minRequired:80,result:'APROBADO',date:new Date().toISOString().slice(0,10)},trainer);expect(evaluated.status).toBe(201);
+  expect((await call(base+'/evaluations','POST',{evaluationId:'inventada',name:'Falsa',score:0,maxScore:20,minRequired:0,result:'APROBADO'},trainer)).status).toBe(400);
+  const evaluated=await call('/api/trainings/'+groupId+'/participants/'+personId+'/evaluations','POST',{evaluationId:evalId,name:'CI módulo',moduleName:'CI módulo',score:95,maxScore:100,minRequired:80,result:'APROBADO',date:new Date().toISOString().slice(0,10)},trainer);expect(evaluated.status).toBe(201);
+  expect((await call(base+'/ojt/start','POST',{},trainer)).status).not.toBe(201);
+  // Server ignores forged result/thresholds; configured minimum still controls approval.
+  expect((await call(base+'/evaluations','POST',{evaluationId:configs[1].id,score:90,maxScore:1,minRequired:0,result:'NO_APROBADO',definitionSnapshot:{id:'fake',maxScore:1}},trainer)).status).toBe(201);
+  const grades=(await call('/api/bootstrap')).data.candidates.find((p:any)=>p.id===personId).training.evaluations;
+  expect(grades.find((e:any)=>e.evaluationId===configs[1].id)).toMatchObject({score:90,maxScore:100,minRequired:80,result:'APROBADO'});
   expect((await call('/api/trainings/'+groupId+'/participants/'+personId+'/ojt/start','POST',{reason:'CI'},trainer)).status).toBe(201);
-  expect((await call('/api/trainings/'+groupId+'/participants/'+personId+'/ojt/daily','POST',{date:new Date().toISOString().slice(0,10),hoursManaged:4,sales:8,attendance:'PRESENTE'},trainer)).status).toBe(201);
+  expect((await call('/api/trainings/'+groupId+'/participants/'+personId+'/ojt/daily','POST',{date:new Date().toISOString().slice(0,10),hoursManaged:4,sales:8,attendance:'PRESENTE',ahtSeconds:240,qaScore:90},trainer)).status).toBe(201);
   expect((await call('/api/trainings/'+groupId+'/participants/'+personId+'/ojt/result','POST',{status:'OJT_APROBADO'},trainer)).status).toBe(201);
-  const candidate=(await call('/api/bootstrap')).data.candidates[0];expect(candidate.ojt.status).toBe('OJT_APROBADO');expect(candidate.ojt.dailyMetrics[0].sph).toBe(2);expect(candidate.training.evaluations[0].score).toBe(95);
+  const candidate=(await call('/api/bootstrap')).data.candidates[0];expect(candidate.ojt.status).toBe('OJT_APROBADO');expect(candidate.ojt.dailyMetrics[0]).toMatchObject({sph:2,ahtSeconds:240,qaScore:90});expect(candidate.training.evaluations.some((e:any)=>e.score===95)).toBe(true);
   const pending=await call('/api/candidates/'+personId+'/alta','POST',{},trainer);expect(pending.status).toBe(409);
  });
  it('asistencia masiva es atómica y la ventana utiliza hora de servidor',async()=>{
@@ -619,5 +634,39 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect(rejected.status).toBe(201);
   expect((await call('/api/candidates/'+rejected.data.id+'/stage','POST',{stage:'NO_APTO'})).status).toBe(200);
   expect((await call('/api/candidates/'+rejected.data.id+'/stage','POST',{stage:'APTO_CAPACITACION'})).status).toBe(400);
+ });
+
+ it('piloto: un desbloqueo vencido se bloquea y permite solicitar y aprobar otro',async()=>{
+  const u=(await db.query("select id,day_date from talent.attendance_unlocks where group_id=$1 limit 1",[groupId])).rows[0];
+  const date=new Date(u.day_date).toISOString().slice(0,10);
+  await db.query("update talent.attendance_unlocks set status='APROBADA',decided_at=now()-interval '2 hours',expires_at=now()-interval '1 hour' where id=$1",[u.id]);
+  const path='/api/trainings/'+groupId;
+  expect((await call(path+'/attendance-window?date='+date,'GET',undefined,trainer)).data.state).toBe('LOCKED');
+  expect((await call(path+'/attendance-unlocks/'+date,'POST',{reason:'Nueva corrección requerida'},trainer)).status).toBe(201);
+  expect((await call(path+'/attendance-unlocks/'+date,'POST',{reason:'Intento duplicado'},trainer)).status).toBe(409);
+  expect((await call(path+'/attendance-unlocks/'+date,'PATCH',{decision:'APROBADA'},trainer)).status).toBe(403);
+  expect([403,404]).toContain((await call(path+'/attendance-unlocks/'+date,'POST',{reason:'Otra empresa'},other)).status);
+  const approved=await call(path+'/attendance-unlocks/'+date,'PATCH',{decision:'APROBADA',reason:'Revisión autorizada'});
+  expect(approved.status).toBe(200);
+  expect(Date.parse(approved.data.expiresAt)-Date.parse(approved.data.decidedAt)).toBeGreaterThan(29*60000);
+  expect(Date.parse(approved.data.expiresAt)-Date.parse(approved.data.decidedAt)).toBeLessThanOrEqual(30*60000);
+  expect((await call(path+'/attendance-window?date='+date,'GET',undefined,trainer)).data.state).toBe('UNLOCKED');
+  await expect(db.query("update talent.attendance_unlocks set status='PENDIENTE' where id=$1",[u.id])).rejects.toThrow('TALENT_USE_UNLOCK_RPC');
+  const privileges=(await db.query("select has_function_privilege('anon','public.talent_unlock_request(uuid,text,text,date,text)','EXECUTE') as anon,has_function_privilege('authenticated','public.talent_unlock_request(uuid,text,text,date,text)','EXECUTE') as authenticated")).rows[0];
+  expect(privileges).toEqual({anon:false,authenticated:false});
+ });
+ it('piloto: el servidor registra nota cero como no aprobada, sin aceptar mínimos ni snapshots del cliente',async()=>{
+  // Fixture aislado; no se modifican datos reales.
+  await db.query("update talent.training_groups set status='EN_CAPACITACION' where id=$1",[groupId]);
+  await db.query("update talent.participants set status='EN_CAPACITACION',ojt_status='NO_INICIADO',training_approved=false where group_id=$1",[groupId]);
+  const path='/api/trainings/'+groupId;
+  expect((await call(path+'/management','PATCH',{operation:'EVALUATION_CONFIG',config:{name:'Regresión cero',maxScore:20,minScore:16}})).status).toBe(200);
+  const config=(await call('/api/bootstrap')).data.cohorts.find((g:any)=>g.id===groupId).evaluationsConfig.find((d:any)=>d.name==='Regresión cero');
+  const recorded=await call(path+'/participants/'+personId+'/evaluations','POST',{evaluationId:config.id,score:0,maxScore:1,minRequired:0,result:'APROBADO',definitionSnapshot:{id:config.id,name:'Falsa',maxScore:1,minScore:0}},trainer);
+  expect(recorded.status).toBe(201);
+  const participant=(await call('/api/bootstrap')).data.candidates.find((c:any)=>c.id===personId);
+  expect(participant.training.evaluations.find((e:any)=>e.evaluationId===config.id)).toMatchObject({score:0,maxScore:20,minRequired:16,result:'NO_APROBADO'});
+  expect((await call(path+'/participants/'+personId+'/ojt/start','POST',{},trainer)).status).not.toBe(201);
+  expect((await call(path+'/participants/'+personId+'/ojt/result','POST',{status:'OJT_APROBADO'},trainer)).status).not.toBe(201);
  });
 });

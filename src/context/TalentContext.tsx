@@ -243,6 +243,8 @@ export interface AttendanceUnlockRequest {
   reason: string;
   status: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
   requestedAt: string;
+  decidedAt?: string;
+  expiresAt?: string | null;
 }
 
 export interface AttendanceWindowInfo {
@@ -923,7 +925,7 @@ export const TalentProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const recordOjtDailyMetricForParticipant = async (candidateId: string, metric: OjtDailyMetric) => {
     const trainingId = trainingIdForCandidate(candidateId);
-    await workerApi(`/api/trainings/${encodeURIComponent(trainingId)}/participants/${encodeURIComponent(candidateId)}/ojt/daily`, { method: 'POST', body: JSON.stringify({ date: metric.date, attendance: metric.attendance ?? 'PRESENTE', hoursManaged: metric.hoursWorked, sales: metric.sales, feedback: metric.coachFeedback, observations: metric.observations }) });
+    await workerApi(`/api/trainings/${encodeURIComponent(trainingId)}/participants/${encodeURIComponent(candidateId)}/ojt/daily`, { method: 'POST', body: JSON.stringify({ date: metric.date, attendance: metric.attendance ?? 'PRESENTE', hoursManaged: metric.hoursWorked, sales: metric.sales, ahtSeconds: metric.ahtSeconds, qaScore: metric.qaScore, calls: metric.calls, leads: metric.leads, conversions: metric.conversions, feedback: metric.coachFeedback, observations: metric.observations }) });
   };
 
   const extendCohortOjt = async (cohortId: string, additionalDays: number, reason?: string) => {
