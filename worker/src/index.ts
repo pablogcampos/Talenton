@@ -520,7 +520,12 @@ async function decideAttendanceUnlock(request: Request, env: Env, actor: Profile
   return response(next, 200, cors(request, env));
 }
 async function updateTrainingManagement(request: Request, env: Env, actor: Profile, trainingId: string) {
-  const training = await requireTrainingManagerAccess(env, actor, trainingId); const input = await request.json<Record<string, unknown>>(); const operation = String(input.operation ?? ''); const now = new Date().toISOString();
+  const input = await request.json<Record<string, unknown>>(); const operation = String(input.operation ?? '');
+  const training = operation === 'EVALUATION_CONFIG'
+    ? await requireTrainingAccess(env, actor, trainingId)
+    : await requireTrainingManagerAccess(env, actor, trainingId);
+  if (operation === 'EVALUATION_CONFIG' && ['FINALIZADA', 'CANCELADA'].includes(String(training.status))) throw new Error('INVALID_TRAINING_TRANSITION');
+  const now = new Date().toISOString();
   if (operation === 'COORDINATOR') { if (typeof input.coordinatorId !== 'string' || typeof input.coordinatorName !== 'string') throw new Error('INVALID_COORDINATOR'); await firestore(env, `trainings/${trainingId}`, 'PATCH', { fields: fields({ coordinatorId: input.coordinatorId, coordinatorName: input.coordinatorName, updatedAt: now, updatedBy: actor.uid }) }); }
   else if (operation === 'STATUS') { const status = String(input.status ?? ''); const transitions: Record<string, string[]> = { PENDIENTE_ASIGNACION: ['PROGRAMADA', 'CANCELADA'], PROGRAMADA: ['EN_CAPACITACION', 'CANCELADA'], EN_CAPACITACION: ['EN_OJT', 'CANCELADA'], EN_OJT: ['EXTENSION_OJT', 'FINALIZADA'], EXTENSION_OJT: ['FINALIZADA'] }; if (!transitions[String(training.status ?? '')]?.includes(status)) throw new Error('INVALID_TRAINING_TRANSITION'); await firestore(env, `trainings/${trainingId}`, 'PATCH', { fields: fields({ status, statusReason: typeof input.reason === 'string' ? input.reason : '', updatedAt: now, updatedBy: actor.uid }) }); }
   else if (operation === 'DETAILS') { const allowed = ['name', 'startDate', 'endDate', 'schedule', 'modality', 'location', 'roomOrLink', 'observations']; const patch: Record<string, unknown> = {}; for (const field of allowed) if (input[field] !== undefined) patch[field] = input[field]; if (!Object.keys(patch).length) throw new Error('INVALID_TRAINING_DATA'); await firestore(env, `trainings/${trainingId}`, 'PATCH', { fields: fields({ ...patch, updatedAt: now, updatedBy: actor.uid }) }); }

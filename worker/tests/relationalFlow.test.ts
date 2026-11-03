@@ -128,9 +128,17 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect((await call(base+'/ojt/result','POST',{status:'OJT_APROBADO'},trainer)).status).not.toBe(201);
   expect((await call(base+'/ojt/daily','POST',{date:'2026-11-03',hoursManaged:4,sales:8},trainer)).status).not.toBe(201);
   expect((await call(base+'/status','POST',{status:'EN_CAPACITACION'},trainer)).status).not.toBe(201);
-  expect((await call('/api/trainings/'+groupId+'/management','PATCH',{operation:'EVALUATION_CONFIG',config:{name:'CI módulo',maxScore:100,minScore:80}},trainer)).status).toBe(403);
+  expect((await call('/api/trainings/'+groupId+'/management','PATCH',{operation:'STATUS',status:'EN_CAPACITACION'},trainer)).status).toBe(403);
+  await db.query("update talent.training_groups set trainer_id=$1 where id=$2",[admin,groupId]);
+  try {
+   expect((await call('/api/trainings/'+groupId+'/management','PATCH',{operation:'EVALUATION_CONFIG',config:{name:'Grupo ajeno',maxScore:20,minScore:16}},trainer)).status).toBe(403);
+  } finally { await db.query("update talent.training_groups set trainer_id=$1 where id=$2",[trainer,groupId]); }
+  await db.query("update talent.training_groups set status='CANCELADA' where id=$1",[groupId]);
+  try {
+   expect((await call('/api/trainings/'+groupId+'/management','PATCH',{operation:'EVALUATION_CONFIG',config:{name:'Grupo cerrado',maxScore:20,minScore:16}},trainer)).status).toBe(400);
+  } finally { await db.query("update talent.training_groups set status='PROGRAMADA' where id=$1",[groupId]); }
   for(const name of ['CI módulo','CI segundo módulo'])
-    expect((await call('/api/trainings/'+groupId+'/management','PATCH',{operation:'EVALUATION_CONFIG',config:{name,maxScore:100,minScore:80}})).status).toBe(200);
+    expect((await call('/api/trainings/'+groupId+'/management','PATCH',{operation:'EVALUATION_CONFIG',config:{name,maxScore:100,minScore:80}},trainer)).status).toBe(200);
   const configs=(await call('/api/bootstrap')).data.cohorts.find((g:any)=>g.id===groupId).evaluationsConfig;
   const evalId=configs[0].id;
   expect((await call('/api/trainings/'+groupId+'/management','PATCH',{operation:'STATUS',status:'EN_CAPACITACION'})).status).toBe(200);

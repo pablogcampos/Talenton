@@ -7,16 +7,22 @@ import {useTalent} from '../../context/TalentContext';
 import type {TrainingCohort, CandidateRecord} from '../../types';
 vi.mock('../../context/TalentContext', () => ({useTalent:vi.fn()}));
 vi.mock('../../services/workerApi', () => ({workerApi:vi.fn(),getWorkerErrorMessage:(_e:unknown,fallback:string)=>fallback}));
-const cohort={id:'g',status:'PROGRAMADA',evaluationsConfig:[]} as TrainingCohort;
+const cohort={id:'g',trainerId:'trainer',status:'PROGRAMADA',evaluationsConfig:[]} as TrainingCohort;
 const participant={id:'p',fullName:'Participante de prueba',training:{status:'PENDIENTE_INICIO'}} as CandidateRecord;
-function actor(role:string) { vi.mocked(useTalent).mockReturnValue({currentUser:{role},addCustomEvaluationToCohort:vi.fn(),updateParticipantTrainingStatus:vi.fn()} as unknown as ReturnType<typeof useTalent>); }
+function actor(role:string) { vi.mocked(useTalent).mockReturnValue({currentUser:{id:'trainer',role},addCustomEvaluationToCohort:vi.fn(),updateParticipantTrainingStatus:vi.fn()} as unknown as ReturnType<typeof useTalent>); }
 describe('preparación del piloto por perfil', () => {
- it('explica la falta de configuración al formador sin permitir cambiar notas mínimas', () => {
+ it('permite al formador asignado configurar sus evaluaciones', () => {
   actor('FORMADOR');
   const html=renderToStaticMarkup(<TrainingPreparation cohort={cohort} participants={[participant]}/>);
   expect(html).toContain('Falta configurar las evaluaciones');
-  expect(html).not.toContain('Agregar evaluación');
+  expect(html).toContain('Agregar evaluación');
   expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Iniciar capacitación/);
+ });
+ it('no permite configurar grupos ajenos o cerrados', () => {
+  actor('FORMADOR');
+  for(const group of [{...cohort,trainerId:'otro'},{...cohort,status:'FINALIZADA' as const},{...cohort,status:'CANCELADA' as const}]) {
+   expect(renderToStaticMarkup(<TrainingPreparation cohort={group}/>)).not.toContain('Agregar evaluación');
+  }
  });
  it('permite iniciar al participante cuando el grupo está iniciado', () => {
   actor('FORMADOR');

@@ -11,7 +11,8 @@ export const TrainingPreparation: React.FC<{cohort: TrainingCohort; participants
   const [minScore, setMinScore] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const manager = ['ADMIN', 'JEFE_FORMACION', 'COORDINADOR_FORMACION'].includes(currentUser.role);
+  const canConfigure = ['ADMIN', 'JEFE_FORMACION', 'COORDINADOR_FORMACION'].includes(currentUser.role)
+    || (currentUser.role === 'FORMADOR' && cohort.trainerId === currentUser.id);
   const definitions = cohort.evaluationsConfig ?? [];
   const pending = participants.filter(p => ['PENDIENTE_INICIO', 'REPROGRAMADO'].includes(String(p.training?.status)));
   const run = async (action: () => Promise<void>) => {
@@ -22,9 +23,9 @@ export const TrainingPreparation: React.FC<{cohort: TrainingCohort; participants
   };
   return <section className="mb-4 space-y-3 rounded-xl border border-slate-200 p-4">
     <h2 className="font-semibold">Preparación de la capacitación</h2>
-    {definitions.length === 0 ? <p role="status" className="text-sm text-amber-800">Falta configurar las evaluaciones. El responsable de Formación debe definir los módulos y sus notas mínimas antes de evaluar.</p>
+    {definitions.length === 0 ? <p role="status" className="text-sm text-amber-800">Falta configurar las evaluaciones. El formador asignado puede definir aquí los módulos y sus notas mínimas antes de evaluar.</p>
       : <ul className="text-sm text-slate-600">{definitions.map(d => <li key={d.id}>{d.name}: mínimo {d.minScore} de {d.maxScore}</li>)}</ul>}
-    {manager && !['FINALIZADA', 'CANCELADA'].includes(cohort.status) && <form className="flex flex-wrap items-end gap-3" onSubmit={e => {
+    {canConfigure && !['FINALIZADA', 'CANCELADA'].includes(cohort.status) && <form className="flex flex-wrap items-end gap-3" onSubmit={e => {
       e.preventDefault();
       void run(async () => { await addCustomEvaluationToCohort(cohort.id, {name: name.trim(), date: limaDay(), maxScore: Number(maxScore), minScore: Number(minScore)}); setName(''); });
     }}>
