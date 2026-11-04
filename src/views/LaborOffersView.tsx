@@ -7,9 +7,20 @@ const field='mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm
 const button='rounded-xl bg-[#143c55] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50';
 export function LaborOffersView(){
  const {currentUser}=useTalent();
- const companies=currentUser.companies?.length?currentUser.companies:[{id:currentUser.companyId!,name:'Mi empresa',managed:false}];
- const [company,setCompany]=useState(companies[0]?.id||'');
- return <main className="space-y-6 p-4 sm:p-6"><header><h1 className="text-2xl font-bold text-[#0b2847]">Propuesta Laboral</h1><p className="mt-2 text-sm text-slate-500">Configura condiciones por campaña, asigna propuestas y consulta los documentos firmados.</p></header><label className="block max-w-md text-sm font-medium">Empresa<select className={field} value={company} onChange={e=>setCompany(e.target.value)}>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>{company&&<OffersPanel key={company} companyId={company}/>}</main>;
+ const [companies,setCompanies]=useState<{id:string;name:string;role:string}[]>([]),[company,setCompany]=useState(''),[loading,setLoading]=useState(true),[error,setError]=useState(''),[revision,setRevision]=useState(0);
+ useEffect(()=>{let active=true;const controller=new AbortController();setLoading(true);setError('');setCompany('');setCompanies([]);
+  const timeout=setTimeout(()=>{if(active){active=false;controller.abort();setLoading(false);setError('No se pudieron cargar tus empresas autorizadas. Intenta nuevamente.');}},20000);
+  workerApi<{companies:{id:string;name:string;role:string}[]}>('/api/offers/companies',{signal:controller.signal},currentUser.companyId)
+   .then(d=>{if(active){setCompanies(d.companies);setCompany(d.companies[0]?.id||'');}}).catch(e=>{if(active)setError(getWorkerErrorMessage(e));})
+   .finally(()=>{clearTimeout(timeout);if(active)setLoading(false);});
+  return()=>{active=false;clearTimeout(timeout);controller.abort();};
+ },[currentUser.id,currentUser.companyId,revision]);
+ return <main className="space-y-6 p-4 sm:p-6"><header><h1 className="text-2xl font-bold text-[#0b2847]">Propuesta Laboral</h1><p className="mt-2 text-sm text-slate-500">Configura condiciones por campaña, asigna propuestas y consulta los documentos firmados.</p></header>
+ {error&&<p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">{error} <button className="underline" onClick={()=>setRevision(v=>v+1)}>Reintentar</button></p>}
+ {loading&&<p role="status">Consultando tus permisos por empresa…</p>}
+ {!loading&&!error&&companies.length===0&&<p role="status" className="rounded-xl bg-amber-50 p-4 text-amber-800">No tienes un perfil de Selección habilitado en tus empresas. Revisa tus asignaciones con el administrador.</p>}
+ {companies.length>0&&<label className="block max-w-md text-sm font-medium">Empresa<select className={field} value={company} onChange={e=>setCompany(e.target.value)}>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><span className="mt-2 block text-xs font-normal text-slate-500">Solo se muestran empresas donde tienes acceso a Selección.</span></label>}
+ {company&&<OffersPanel key={company} companyId={company}/>}</main>;
 }
 export const OffersPanel: React.FC<{companyId:string;groupId?:string}> = ({companyId,groupId}) => {
  const [data,setData]=useState<Catalog|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[revision,setRevision]=useState(0);

@@ -1,4 +1,4 @@
-import {relationalSession} from './supabaseSession';
+import {relationalSession,type SessionProfile} from './supabaseSession';
 import {supabaseServerHeaders,SupabaseError,type SupabaseEnv} from './supabase';
 type Env=SupabaseEnv & {CAPTURE_HASH_SECRET?:string};
 export async function offerRpc<T>(env:Env,name:string,args:object):Promise<T>{
@@ -27,6 +27,16 @@ export async function handleOffers(request:Request,env:Env){
   return offerRpc(env,'talent_offer_public',{p_token:publicToken,p_data:data,p_evidence:hash});
  }
  const actor=await relationalSession(request,env);const args={p_actor:actor.authUserId,p_company:actor.companyId};
+ if(path==='/api/offers/companies'&&request.method==='GET'){
+  const companies=await Promise.all((actor.companies||[{id:actor.companyId,name:'Mi empresa',managed:false}]).map(async company=>{
+   let context:SessionProfile;
+   try{context=actor.companies?await offerRpc<SessionProfile>(env,'talent_org_context',{p_actor:actor.authUserId,p_company:company.id}):actor;}
+   catch(e){if(e instanceof SupabaseError&&e.code==='FORBIDDEN')return null;throw e;}
+   const allowed=context.role==='ADMIN'||['JEFE_SELECCION','ANALISTA_SELECCION','RECLUTADOR'].includes(context.role)&&context.allowedModules.includes('SELECCION');
+   return allowed?{id:company.id,name:company.name,role:context.role}:null;
+  }));
+  return {companies:companies.filter(Boolean)};
+ }
  if(path==='/api/offers'&&request.method==='GET')return offerRpc(env,'talent_offer_catalog',{...args,p_group:new URL(request.url).searchParams.get('group')});
  if(path==='/api/offers/templates'&&request.method==='POST'){
   const d=await input(request);if(typeof d.title!=='string'||typeof d.content!=='string'||typeof d.campaignId!=='string')throw new SupabaseError(400,'OFFER_INVALID');

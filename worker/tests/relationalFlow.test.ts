@@ -846,4 +846,20 @@ describe('Transición relacional PostgreSQL 17',()=>{
    }
   }finally{env.ORG_ENABLED=undefined;}
  });
+
+ it('selector de propuestas respeta el rol efectivo por empresa y excluye Formación',async()=>{
+  const analyst='40000000-0000-4000-8000-000000000005';
+  for(const [company,role] of [['konectados','ANALISTA_SELECCION'],['talent-up','JEFE_FORMACION'],['techcenter','JEFE_FORMACION']]){
+   await db.query('select public.talent_org_member_save($1,$2,$3,$4,true,true,$5,null)',[admin,analyst,company,role,'{}']);
+  }
+  env.ORG_ENABLED='true';
+  try{
+   const result=await call('/api/offers/companies','GET',undefined,analyst,'konectados');
+   expect(result.status).toBe(200);
+   expect(result.data.companies).toContainEqual({id:'konectados',name:'Konectados',role:'ANALISTA_SELECCION'});
+   expect(result.data.companies.some((c:any)=>['talent-up','techcenter'].includes(c.id))).toBe(false);
+   expect((await call('/api/offers','GET',undefined,analyst,'techcenter')).status).toBe(403);
+   expect((await call('/api/offers','GET',undefined,analyst,'konectados')).status).toBe(200);
+  }finally{env.ORG_ENABLED=undefined;}
+ });
 });
