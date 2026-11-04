@@ -222,6 +222,8 @@ const AppContent: React.FC = () => {
 };
 
 export default function App() {
+  const groupOfferRoute = window.location.pathname.match(/^\/propuesta\/capacitacion\/([a-f0-9]{64})$/);
+  if (groupOfferRoute) return <Suspense fallback={<p className="p-6">Cargando propuesta…</p>}><PublicOfferView key={groupOfferRoute[1]} token={groupOfferRoute[1]} groupLink /></Suspense>;
   const offerRoute = window.location.pathname.match(/^\/propuesta\/([a-f0-9]{64})$/);
   if (offerRoute) return <Suspense fallback={<p className="p-6">Cargando propuesta…</p>}><PublicOfferView token={offerRoute[1]} /></Suspense>;
   const surveyRoute = window.location.pathname.match(/^\/encuestas\/capacitacion\/([0-9a-f-]{36})$/);

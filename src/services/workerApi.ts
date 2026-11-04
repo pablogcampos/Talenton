@@ -22,6 +22,7 @@ const WORKER_ERROR_MESSAGES: Record<string, string> = {
   OFFER_RATE_LIMITED: 'Se alcanzó el límite de intentos. Intenta nuevamente en 15 minutos.',
   OFFER_NOT_FOUND: 'La propuesta no está disponible o el enlace fue reemplazado.',
   OFFER_INVALID: 'Revisa los campos de la propuesta.',
+  OFFER_LOOKUP_NOT_FOUND: 'No encontramos una propuesta asignada a ese DNI en esta capacitación. Revisa el número o consulta con tu reclutador.',
   OFFER_INVALID_WORKDAY: 'Selecciona Fulltime, Semifull o Part time.',
   OFFER_USE_WORKDAY_ASSIGNMENT: 'Usa la asignación masiva por jornada para esta capacitación.',
   OFFER_PLAN_CHANGED: 'Cambió la información desde la revisión. Vuelve a validar las jornadas antes de asignar.',

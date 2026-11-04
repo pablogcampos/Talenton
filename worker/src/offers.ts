@@ -26,6 +26,17 @@ export async function handleOffers(request:Request,env:Env){
   if(data){if(!env.CAPTURE_HASH_SECRET)throw new SupabaseError(503,'OFFER_FAILED');hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(env.CAPTURE_HASH_SECRET+':offer:'+publicToken+':'+(request.headers.get('cf-connecting-ip')||'unknown')+':'+(request.headers.get('user-agent')||''))))).map(b=>b.toString(16).padStart(2,'0')).join('');}
   return offerRpc(env,'talent_offer_public',{p_token:publicToken,p_data:data,p_evidence:hash});
  }
+ const groupToken=path.match(/^\/api\/public\/offers\/group\/([a-f0-9]{64})$/)?.[1];
+ if(groupToken){
+  if(!['GET','POST'].includes(request.method))throw new SupabaseError(405,'METHOD_NOT_ALLOWED');
+  const data=request.method==='POST'?await input(request):null;
+  let hash=null;
+  if(data){
+   if(!env.CAPTURE_HASH_SECRET)throw new SupabaseError(503,'OFFER_FAILED');
+   hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(env.CAPTURE_HASH_SECRET+':offer-group:'+groupToken+':'+(request.headers.get('cf-connecting-ip')||'unknown'))))).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  return offerRpc(env,'talent_offer_group_public',{p_token:groupToken,p_data:data,p_evidence:hash});
+ }
  const actor=await relationalSession(request,env);const args={p_actor:actor.authUserId,p_company:actor.companyId};
  if(path==='/api/offers/companies'&&request.method==='GET'){
   const companies=await Promise.all((actor.companies||[{id:actor.companyId,name:'Mi empresa',managed:false}]).map(async company=>{

@@ -917,4 +917,34 @@ describe('Transición relacional PostgreSQL 17',()=>{
   const fn=(await db.query("select has_function_privilege('anon','public.talent_offer_assign_workdays(uuid,text,text,text)','execute') as anon,has_function_privilege('service_role','public.talent_offer_assign_legacy(uuid,text,text,uuid)','execute') as legacy")).rows[0];expect(fn).toEqual({anon:false,legacy:false});
  });
 
+ it('enlace común exige DNI, aísla capacitación y firma únicamente la propuesta asignada',async()=>{
+  const group=(await db.query("select id from talent.training_groups where code='CI-WORKDAY'")).rows[0].id;
+  const catalog=(await call('/api/offers?group='+group)).data;
+  const token=catalog.groups[0].publicToken;expect(token).toMatch(/^[a-f0-9]{64}$/);
+  expect((await call('/api/offers?group='+group)).data.groups[0].publicToken).toBe(token);
+  expect((await call('/api/offers?group='+group,'GET',undefined,other)).status).toBe(403);
+  const path='/api/public/offers/group/'+token;
+  // No Authorization header: the shared link is explicitly public.
+  const publicCall=async(body?:any)=>{const r=await worker.fetch(new Request('https://worker.test'+path,{method:body?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json','cf-connecting-ip':'192.0.2.22'},...(body?{body:JSON.stringify(body)}:{})}),env);return {status:r.status,data:await r.json() as any};};
+  const meta=await publicCall();expect(meta.status).toBe(200);expect(Object.keys(meta.data).sort()).toEqual(['company','group']);
+  const docs=(await db.query('select * from talent_offers.documents where group_id=$1 and revoked_at is null',[group])).rows;
+  const part=docs.find((d:any)=>d.snapshot.workday==='PART_TIME');const full=docs.find((d:any)=>d.signed_at);expect(part).toBeTruthy();
+  const lookup=await publicCall({action:'lookup',dni:part.snapshot.dni});expect(lookup.status).toBe(200);expect(lookup.data.id).toBe(part.id);expect(lookup.data.snapshot.workday).toBe('PART_TIME');expect(lookup.data.snapshot.dni).toBeUndefined();expect(JSON.stringify(lookup.data)).not.toContain(part.token);
+  const signedLookup=await publicCall({action:'lookup',dni:full.snapshot.dni});expect(signedLookup.data.signedAt).toBeTruthy();expect(signedLookup.data.id).toBe(full.id);
+  for(const dni of ['', '00000000','99555003'])expect((await publicCall({action:'lookup',dni})).data.message).toBe('OFFER_LOOKUP_NOT_FOUND');
+  const outside=(await db.query('select snapshot from talent_offers.documents where group_id<>$1 limit 1',[group])).rows[0];expect((await publicCall({action:'lookup',dni:outside.snapshot.dni})).data.message).toBe('OFFER_LOOKUP_NOT_FOUND');
+  const signature=[Array.from({length:12},(_,i)=>[i*10,30+i])];
+  expect((await publicCall({action:'sign',dni:part.snapshot.dni,accepted:true,contentHash:full.content_hash,signature})).data.message).toBe('OFFER_INVALID_SIGNATURE');
+  const signed=await publicCall({action:'sign',dni:part.snapshot.dni,accepted:true,contentHash:part.content_hash,signature});expect(signed.status).toBe(200);expect(signed.data.id).toBe(part.id);expect(signed.data.signedAt).toBeTruthy();
+  expect((await publicCall({action:'sign',dni:part.snapshot.dni,accepted:true,contentHash:part.content_hash,signature})).data.signedAt).toBe(signed.data.signedAt);
+  expect((await db.query('select content_hash from talent_offers.documents where id=$1',[full.id])).rows[0].content_hash).toBe(full.content_hash);
+  // Invalid lookups commit their counter, even though the HTTP response is an error.
+  const key='group:'+token+':';await db.query('update talent_offers.attempts set attempts=40 where token like $1',[key+'%']);
+  expect((await publicCall({action:'lookup',dni:part.snapshot.dni})).status).toBe(429);
+  await db.query('delete from talent_offers.attempts where token like $1',[key+'%']);
+  await db.query('update talent.training_groups set archived_at=now() where id=$1',[group]);expect((await publicCall()).data.message).toBe('OFFER_NOT_FOUND');
+  await db.query('update talent.training_groups set archived_at=null where id=$1',[group]);
+  expect((await db.query("select has_function_privilege('anon','public.talent_offer_group_public(text,jsonb,text)','execute') as anon,has_function_privilege('service_role','public.talent_offer_catalog_before_group_links(uuid,text,text)','execute') as legacy")).rows[0]).toEqual({anon:false,legacy:false});
+ });
+
 });
