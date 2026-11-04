@@ -27,7 +27,6 @@ export async function offerPdfDefinition(d:OfferDocument):Promise<TDocumentDefin
   ...(s.dni?[{text:'DNI / documento: '+s.dni,fontSize:10}]:[]),
   {text:s.campaign+' · '+s.group,fontSize:10,color:'#64748b',margin:[0,4,0,16]},
   ...(s.workday?[{text:'Jornada: '+offerWorkdays[s.workday],bold:true,margin:[0,0,0,12]} as Content]:[]),
-  {text:'Días de capacitación: '+(s.days||'Por definir')+'\nInicio: '+(s.startDate||'Por definir')+' · Fin de teoría: '+(s.endDate||'Por definir'),fontSize:10,margin:[0,0,0,18]},
   htmlToPdfmake(html,{window:window as unknown as NonNullable<Parameters<typeof htmlToPdfmake>[1]>['window'],tableAutoSize:false,defaultStyles:{p:{margin:[0,0,0,8]},h1:{fontSize:21,margin:[0,16,0,10]},h2:{fontSize:16,margin:[0,16,0,8]},h3:{fontSize:13,margin:[0,12,0,6]},th:{fillColor:'#edf4f8',bold:true},td:{margin:[5,5,5,5]}}}) as Content
  ];
  if(d.signedAt||d.signed_at){
