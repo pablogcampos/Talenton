@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {OfferContent,type OfferDocument,type Signature,SignatureImage} from '../components/selection/OfferDocument';
+import {OfferContent,OfferDownloadButton,type OfferDocument,type Signature,SignatureImage} from '../components/selection/OfferDocument';
 import {getWorkerErrorMessage} from '../services/workerApi';
 const base=(import.meta.env.VITE_ADMIN_API_URL||import.meta.env.VITE_WORKER_API_URL)?.replace(/\/$/,'');
 export function PublicOfferView({token}:{token:string}){
@@ -14,7 +14,7 @@ export function PublicOfferView({token}:{token:string}){
  return <main className="min-h-screen bg-slate-50 px-4 py-8 text-[#143c55]"><div className="mx-auto max-w-3xl space-y-5"><header><h1 className="text-2xl font-bold">Revisa tu propuesta laboral</h1><p className="mt-2 text-sm text-slate-500">Lee las condiciones antes de aceptar y firmar.</p></header>
  {error&&<div role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">{error}<button className="ml-3 underline" onClick={()=>void refresh()}>Reintentar</button></div>}
  {!doc&&!error&&<p role="status">Cargando propuesta…</p>}
- {doc&&<><OfferContent document={doc}/>{!doc.signedAt?<form onSubmit={sign} className="space-y-5 rounded-2xl border bg-white p-5 sm:p-8"><h2 className="text-lg font-bold">Aceptación y firma</h2>
+ {doc&&<><OfferContent document={doc}/><div className="flex justify-end"><OfferDownloadButton document={doc}/></div>{!doc.signedAt?<form onSubmit={sign} className="space-y-5 rounded-2xl border bg-white p-5 sm:p-8"><h2 className="text-lg font-bold">Aceptación y firma</h2>
  <label className="block text-sm font-medium">Confirma tu DNI / documento<input required autoComplete="off" maxLength={30} value={dni} disabled={busy} onChange={e=>setDni(e.target.value.trim())} className="mt-2 block w-full rounded-xl border p-3 focus:ring-2 focus:ring-teal-500"/></label>
  <label className="flex items-start gap-3 text-sm leading-relaxed"><input type="checkbox" required checked={accepted} disabled={busy} onChange={e=>setAccepted(e.target.checked)} className="mt-1 h-5 w-5 shrink-0"/>He leído y acepto íntegramente esta propuesta laboral y sus condiciones.</label>
  <div><div className="mb-2 flex items-center justify-between"><span className="text-sm font-medium">Dibuja tu firma</span><button type="button" disabled={busy} className="text-sm underline" onClick={()=>setStrokes([])}>Borrar firma</button></div>

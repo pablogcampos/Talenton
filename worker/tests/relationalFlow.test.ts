@@ -771,7 +771,10 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect((await call('/api/offers/assign','POST',{groupId:group,templateId:t1.data},outsider)).status).toBe(403);
   expect((await call('/api/offers/assign','POST',{groupId:group,templateId:t1.data},recruiter)).status).toBe(200);
   const old=(await call('/api/offers?group='+group,'GET',undefined,trainer)).data.documents;expect(old).toHaveLength(2);
-  const t2=await call('/api/offers/templates','POST',{...payload,title:'Condiciones 2'},analyst);
+  const richHtml='<h2>Condiciones 2</h2><p>Estimado {{nombre}}, propuesta de {{empresa}} para {{campaña}}.</p><table><tbody><tr><td>Sueldo</td><td>S/ 1500</td></tr></tbody></table>';
+  const richContent='TALENT_OFFER_HTML_V1:'+Buffer.from(richHtml).toString('base64');
+  expect((await call('/api/offers/templates','POST',{...payload,content:'TALENT_OFFER_HTML_V1:%%%'},analyst)).status).toBe(400);
+  const t2=await call('/api/offers/templates','POST',{...payload,title:'Condiciones 2',content:richContent},analyst);expect(t2.status).toBe(200);
   expect((await call('/api/offers/assign','POST',{groupId:group,templateId:t2.data},recruiter)).status).toBe(200);
   expect((await call('/api/public/offers/'+old[0].token)).data.message).toBe('OFFER_NOT_FOUND');
   const catalog=(await call('/api/offers?group='+group,'GET',undefined,trainer)).data;
@@ -782,7 +785,7 @@ describe('Transición relacional PostgreSQL 17',()=>{
   const signature=[Array.from({length:15},(_,i)=>[i*10,20+i])];
   for(const doc of docs){
    const pub=await call('/api/public/offers/'+doc.token);
-   expect(pub.data.snapshot.name).toBe(doc.name);expect(pub.data.snapshot.dni).toBeUndefined();expect(pub.data.snapshot.content).toContain(doc.name);expect(pub.data.snapshot.content).not.toContain('{{nombre}}');
+   expect(pub.data.snapshot.name).toBe(doc.name);expect(pub.data.snapshot.dni).toBeUndefined();expect(pub.data.snapshot.content).toBe(richContent);expect(Buffer.from(pub.data.snapshot.content.split(':')[1],'base64').toString()).toBe(richHtml);
    const row=(await db.query('select * from talent_offers.documents where id=$1',[doc.id])).rows[0];
    for(const invalid of [{accepted:false},{dni:'11111111'},{contentHash:'forged'},{signature:[]},{signature:[[[999,1]]]},{signature:[[['<script>',1]]]}]){
     expect((await call('/api/public/offers/'+doc.token,'POST',{accepted:true,dni:row.snapshot.dni,contentHash:row.content_hash,signature,...invalid})).data.message).toBe('OFFER_INVALID_SIGNATURE');

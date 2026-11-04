@@ -40,6 +40,14 @@ export async function handleOffers(request:Request,env:Env){
  if(path==='/api/offers'&&request.method==='GET')return offerRpc(env,'talent_offer_catalog',{...args,p_group:new URL(request.url).searchParams.get('group')});
  if(path==='/api/offers/templates'&&request.method==='POST'){
   const d=await input(request);if(typeof d.title!=='string'||typeof d.content!=='string'||typeof d.campaignId!=='string')throw new SupabaseError(400,'OFFER_INVALID');
+  if(d.content.startsWith('TALENT_OFFER_HTML_V1:')){
+   try{
+    const encoded=d.content.slice('TALENT_OFFER_HTML_V1:'.length);
+    if(d.content.length>40000||!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded))throw Error('Invalid encoding');
+    const html=new TextDecoder('utf-8',{fatal:true,ignoreBOM:false}).decode(Uint8Array.from(atob(encoded),c=>c.charCodeAt(0)));
+    if(html.replace(/<[^>]*>/g,'').trim().length<20)throw Error('Empty document');
+   }catch{throw new SupabaseError(400,'OFFER_INVALID');}
+  }
   return offerRpc(env,'talent_offer_create',{...args,p_campaign:d.campaignId,p_title:d.title,p_content:d.content});
  }
  if(path==='/api/offers/assign'&&request.method==='POST'){

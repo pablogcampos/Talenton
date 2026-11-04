@@ -1,8 +1,9 @@
-import React,{useEffect,useState,useRef} from 'react';
+import React,{useEffect,useState,useRef,lazy,Suspense} from 'react';
 import {useTalent} from '../context/TalentContext';
 import {workerApi,getWorkerErrorMessage} from '../services/workerApi';
-import {OfferContent,downloadOffer,offerDate,type OfferDocument} from '../components/selection/OfferDocument';
+import {OfferContent,OfferDownloadButton,downloadOffer,offerDate,type OfferDocument} from '../components/selection/OfferDocument';
 type Catalog={canCreate:boolean;canAssign:boolean;campaigns:{id:string;name:string}[];groups:{id:string;name:string;code:string;campaignId:string;campaignKey:string;status:string;templateId:string|null}[];templates:{id:string;campaign_id:string;campaignKey:string;title:string;content:string;created_at:string}[];documents:{id:string;groupId:string;name:string;title:string;signedAt:string|null;revokedAt:string|null;token:string|null}[]};
+const OfferEditor=lazy(()=>import('../components/selection/OfferEditor'));
 const field='mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500';
 const button='rounded-xl bg-[#143c55] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50';
 export function LaborOffersView(){
@@ -20,11 +21,12 @@ export function LaborOffersView(){
  {loading&&<p role="status">Consultando tus permisos por empresa…</p>}
  {!loading&&!error&&companies.length===0&&<p role="status" className="rounded-xl bg-amber-50 p-4 text-amber-800">No tienes un perfil de Selección habilitado en tus empresas. Revisa tus asignaciones con el administrador.</p>}
  {companies.length>0&&<label className="block max-w-md text-sm font-medium">Empresa<select className={field} value={company} onChange={e=>setCompany(e.target.value)}>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><span className="mt-2 block text-xs font-normal text-slate-500">Solo se muestran empresas donde tienes acceso a Selección.</span></label>}
- {company&&<OffersPanel key={company} companyId={company}/>}</main>;
+ {company&&<OffersPanel key={company} companyId={company} companyName={companies.find(c=>c.id===company)?.name}/>}</main>;
 }
-export const OffersPanel: React.FC<{companyId:string;groupId?:string}> = ({companyId,groupId}) => {
+export const OffersPanel: React.FC<{companyId:string;companyName?:string;groupId?:string}> = ({companyId,companyName=companyId,groupId}) => {
  const [data,setData]=useState<Catalog|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[revision,setRevision]=useState(0);
- const [campaign,setCampaign]=useState(''),[title,setTitle]=useState(''),[content,setContent]=useState(''),[group,setGroup]=useState(groupId||''),[template,setTemplate]=useState(''),[filter,setFilter]=useState('ALL'),[detail,setDetail]=useState<OfferDocument|null>(null);
+ const [editing,setEditing]=useState<{campaignId:string;title:string;content:string}|null|undefined>(undefined);
+ const [group,setGroup]=useState(groupId||''),[template,setTemplate]=useState(''),[filter,setFilter]=useState('ALL'),[detail,setDetail]=useState<OfferDocument|null>(null);
  const [loading,setLoading]=useState(true);const loadingRef=useRef(false);
  useEffect(()=>{
   let active=true;const controller=new AbortController();loadingRef.current=true;setLoading(true);setError('');
@@ -35,24 +37,20 @@ export const OffersPanel: React.FC<{companyId:string;groupId?:string}> = ({compa
    .finally(()=>{clearTimeout(timer);if(active){loadingRef.current=false;setLoading(false);}});
   return()=>{active=false;clearTimeout(timer);controller.abort();loadingRef.current=false;};
  },[companyId,groupId,revision]);
- useEffect(()=>{const refresh=()=>{if(!loadingRef.current)setRevision(v=>v+1);};window.addEventListener('focus',refresh);return()=>window.removeEventListener('focus',refresh);},[]);
+ useEffect(()=>{const refresh=()=>{if(editing===undefined&&!loadingRef.current)setRevision(v=>v+1);};window.addEventListener('focus',refresh);return()=>window.removeEventListener('focus',refresh);},[editing]);
  const run=async(path:string,body:object)=>{if(busy)return;setBusy(true);setError('');setNotice('');try{await workerApi(path,{method:'POST',body:JSON.stringify(body)},companyId);setNotice('Guardado correctamente.');setRevision(v=>v+1);}catch(e){setError(getWorkerErrorMessage(e));}finally{setBusy(false);}};
  const selectedGroup=data?.groups.find(g=>g.id===group);
- const show=async(id:string,download=false)=>{setError('');try{const d=await workerApi<OfferDocument>('/api/offers/documents/'+id,{},companyId);if(download)downloadOffer(d);else setDetail(d);}catch(e){setError(getWorkerErrorMessage(e));}};
+ const show=async(id:string,download=false)=>{setError('');try{const d=await workerApi<OfferDocument>('/api/offers/documents/'+id,{},companyId);if(download)await downloadOffer(d);else setDetail(d);}catch(e){setError(getWorkerErrorMessage(e));}};
  const copy=async(token:string)=>{try{await navigator.clipboard.writeText(window.location.origin+'/propuesta/'+token);setNotice('Enlace copiado.');}catch{setError('No se pudo copiar. Abre el enlace y cópialo desde el navegador.');}};
  return <section className="space-y-5 text-[#143c55]">
  <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-bold">{groupId?'Propuestas de los participantes':'Plantillas y propuestas firmadas'}</h2><p className="mt-1 text-sm text-slate-500">Firma antes de iniciar, o como máximo antes de finalizar la teoría. Todos deben firmar para cerrar la etapa.</p></div><button disabled={loading} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-50" onClick={()=>setRevision(v=>v+1)}>{loading?'Cargando…':'Actualizar'}</button></div>
  {error&&<p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">{error}</p>}{notice&&<p role="status" className="rounded-xl bg-teal-50 p-3 text-teal-800">{notice}</p>}
  {loading&&!data&&<p role="status">Cargando propuestas…</p>}
  {data&&<>
- {!groupId&&data.canCreate&&<details className="rounded-2xl border bg-white p-5"><summary className="cursor-pointer font-semibold">Crear propuesta o nueva versión</summary><form className="mt-5 space-y-4" onSubmit={e=>{e.preventDefault();void run('/api/offers/templates',{campaignId:campaign,title,content});}}>
- {data.campaigns.length===0&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">No hay campañas activas disponibles para esta empresa dentro de tus permisos. Revisa el catálogo de campañas y las asignaciones de acceso.</p>}
- <label className="block text-sm">Campaña<select required className={field} value={campaign} onChange={e=>setCampaign(e.target.value)}><option value="">Selecciona una campaña</option>{data.campaigns.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
- <label className="block text-sm">Título<input required maxLength={160} className={field} value={title} onChange={e=>setTitle(e.target.value)}/></label>
- <label className="block text-sm">Condiciones de la propuesta<textarea required minLength={20} maxLength={40000} rows={12} className={field} value={content} onChange={e=>setContent(e.target.value)} placeholder="Describe días y condiciones de capacitación, sueldo, bonos, fechas de pago, políticas y demás acuerdos."/></label>
- <p className="text-xs text-slate-500">El nombre, empresa, campaña y fechas se incluyen automáticamente. Puedes usar {'{{nombre}}'}, {'{{empresa}}'} y {'{{campaña}}'} en el texto. Cada guardado crea una versión nueva y conserva las anteriores.</p>
- <button disabled={busy} className={button}>Guardar nueva propuesta</button></form>
- <div className="mt-5 space-y-2">{data.templates.map(t=><div key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-sm"><span>{t.title} · {data.campaigns.find(c=>c.id===(t.campaignKey||t.campaign_id))?.name} · {offerDate(t.created_at)}</span><button type="button" className="underline" onClick={()=>{setCampaign(t.campaignKey||t.campaign_id);setTitle(t.title);setContent(t.content);}}>Usar como base</button></div>)}</div></details>}
+ {!groupId&&data.canCreate&&<section className="space-y-4 rounded-2xl border bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">Plantillas por campaña</h3><p className="text-sm text-slate-500">Edita el documento con el formato y logo de la empresa.</p></div><button disabled={loading||!data.campaigns.length} className={button} onClick={()=>setEditing(null)}>Crear propuesta</button></div>
+ {!data.campaigns.length&&<p role="status">No hay campañas activas disponibles dentro de tus permisos.</p>}
+ <div className="space-y-2">{data.templates.map(t=><div key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-sm"><span>{t.title} · {data.campaigns.find(c=>c.id===(t.campaignKey||t.campaign_id))?.name} · {offerDate(t.created_at)}</span><button disabled={loading} className="rounded-lg border bg-white px-3 py-2" onClick={()=>setEditing({campaignId:t.campaignKey||t.campaign_id,title:t.title,content:t.content})}>Editar nueva versión</button></div>)}</div></section>}
+ {editing!==undefined&&<Suspense fallback={<p role="status">Abriendo editor…</p>}><OfferEditor companyId={companyId} companyName={companyName} campaigns={data.campaigns} initial={editing||undefined} onClose={()=>setEditing(undefined)} onSave={async value=>{await workerApi('/api/offers/templates',{method:'POST',body:JSON.stringify(value)},companyId);setNotice('Nueva versión guardada. Los documentos anteriores se conservan.');setRevision(v=>v+1);}}/></Suspense>}
  {data.canAssign&&<form className="space-y-4 rounded-2xl border bg-white p-5" onSubmit={e=>{e.preventDefault();void run('/api/offers/assign',{groupId:group,templateId:template});}}><h3 className="font-semibold">Asignar propuesta a la capacitación</h3>
  <div className="grid gap-4 md:grid-cols-2"><label className="text-sm">Capacitación<select required disabled={Boolean(groupId)||busy} className={field} value={group} onChange={e=>{setGroup(e.target.value);setTemplate('');}}><option value="">Selecciona una capacitación</option>{data.groups.map(g=><option key={g.id} value={g.id}>{g.code} · {g.name}</option>)}</select></label>
  <label className="text-sm">Propuesta de la campaña<select required disabled={!selectedGroup||busy} className={field} value={template} onChange={e=>setTemplate(e.target.value)}><option value="">Selecciona una versión</option>{data.templates.filter(t=>t.campaign_id===selectedGroup?.campaignId || t.campaignKey===selectedGroup?.campaignKey).map(t=><option key={t.id} value={t.id}>{t.title} · {offerDate(t.created_at)}</option>)}</select></label></div>
@@ -64,6 +62,6 @@ export const OffersPanel: React.FC<{companyId:string;groupId?:string}> = ({compa
  {d.token&&!d.signedAt&&<><button className="rounded-lg border px-3 py-2" onClick={()=>void copy(d.token!)}>Copiar enlace</button><a className="rounded-lg border px-3 py-2" href={'/propuesta/'+d.token} target="_blank" rel="noopener noreferrer">Abrir enlace</a></>}
  {d.signedAt&&<button className="rounded-lg bg-[#143c55] px-3 py-2 text-white" onClick={()=>void show(d.id,true)}>Descargar firmado</button>}</div></li>)}</ul></div>
  </>}
- {detail&&<div role="dialog" aria-modal="true" aria-label="Documento de propuesta laboral" className="fixed inset-0 z-[100] overflow-y-auto bg-slate-900/60 p-4"><div className="mx-auto max-w-3xl space-y-3"><div className="sticky top-0 flex justify-end gap-3 rounded-xl bg-white p-3"><button className="rounded-lg border px-4 py-2" onClick={()=>setDetail(null)}>Cerrar documento</button>{detail.signed_at&&<button className={button} onClick={()=>downloadOffer(detail)}>Descargar firmado</button>}</div><OfferContent document={detail}/></div></div>}
+ {detail&&<div role="dialog" aria-modal="true" aria-label="Documento de propuesta laboral" className="fixed inset-0 z-[100] overflow-y-auto bg-slate-900/60 p-4"><div className="mx-auto max-w-3xl space-y-3"><div className="sticky top-0 flex justify-end gap-3 rounded-xl bg-white p-3"><button className="rounded-lg border px-4 py-2" onClick={()=>setDetail(null)}>Cerrar documento</button>{detail.signed_at&&<OfferDownloadButton document={detail}/>}</div><OfferContent document={detail}/></div></div>}
  </section>;
 }
