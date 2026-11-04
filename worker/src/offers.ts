@@ -48,7 +48,16 @@ export async function handleOffers(request:Request,env:Env){
     if(html.replace(/<[^>]*>/g,'').trim().length<20)throw Error('Empty document');
    }catch{throw new SupabaseError(400,'OFFER_INVALID');}
   }
+  if(d.workday!==undefined){
+   if(!['FULL_TIME','SEMI_FULL','PART_TIME'].includes(d.workday))throw new SupabaseError(400,'OFFER_INVALID_WORKDAY');
+   return offerRpc(env,'talent_offer_create_workday',{...args,p_campaign:d.campaignId,p_title:d.title,p_content:d.content,p_workday:d.workday});
+  }
   return offerRpc(env,'talent_offer_create',{...args,p_campaign:d.campaignId,p_title:d.title,p_content:d.content});
+ }
+ if(path==='/api/offers/workday-plan'&&request.method==='GET')return offerRpc(env,'talent_offer_workday_plan',{...args,p_group:new URL(request.url).searchParams.get('group')});
+ if(path==='/api/offers/assign-workdays'&&request.method==='POST'){
+  const d=await input(request);if(typeof d.groupId!=='string'||typeof d.hash!=='string')throw new SupabaseError(400,'OFFER_INVALID');
+  return offerRpc(env,'talent_offer_assign_workdays',{...args,p_group:d.groupId,p_hash:d.hash});
  }
  if(path==='/api/offers/assign'&&request.method==='POST'){
   const d=await input(request);return offerRpc(env,'talent_offer_assign',{...args,p_group:d.groupId,p_template:d.templateId});

@@ -865,4 +865,56 @@ describe('Transición relacional PostgreSQL 17',()=>{
    expect((await call('/api/offers','GET',undefined,analyst,'konectados')).status).toBe(200);
   }finally{env.ORG_ENABLED=undefined;}
  });
+ it('asignación masiva cruza jornadas, conserva firmas y deja pendientes sin coincidencia',async()=>{
+  const recruiter='40000000-0000-4000-8000-000000000004';
+  const analyst='40000000-0000-4000-8000-000000000005';
+  const people:string[]=[];
+  for(const [i,schedule] of ['Fulltime','Semifull','Part',''].entries()){
+   const p=await call('/api/candidates','POST',{dni:'9955500'+i,fullName:'CI jornada '+i,phone:'999888777',campaignId,recruiterId:admin,source:'Otro',workSchedule:schedule});expect(p.status).toBe(201);people.push(p.data.id);
+   expect((await call('/api/candidates/'+p.data.id+'/stage','POST',{stage:'APTO_CAPACITACION'})).status).toBe(200);
+  }
+  const day=new Date().toISOString().slice(0,10);
+  const created=await call('/api/trainings/from-selection','POST',{campaignId,candidateIds:people,name:'CI jornadas',code:'CI-WORKDAY',startDate:day,endDate:day,totalDays:2,modality:'PRESENCIAL',schedule:'09:00-16:00'});expect(created.status).toBe(201);const group=created.data.id;
+  const base={campaignId,title:'CI jornada',content:'Condiciones laborales para {{nombre}} por jornada registrada.'};
+  expect((await call('/api/offers/templates','POST',{...base,workday:'MAÑANA'},analyst)).status).toBe(400);
+  const full=await call('/api/offers/templates','POST',{...base,workday:'FULL_TIME'},analyst);expect(full.status).toBe(200);
+  const semi=await call('/api/offers/templates','POST',{...base,workday:'SEMI_FULL'},analyst);expect(semi.status).toBe(200);
+  expect((await call('/api/offers/assign','POST',{groupId:group,templateId:full.data},recruiter)).data.message).toBe('OFFER_USE_WORKDAY_ASSIGNMENT');
+  expect((await call('/api/offers/workday-plan?group='+group,'GET',undefined,analyst)).status).toBe(403);
+  expect((await call('/api/offers/workday-plan?group='+group,'GET',undefined,other)).status).toBe(403);
+  let plan=(await call('/api/offers/workday-plan?group='+group,'GET',undefined,recruiter)).data;
+  expect(plan.participants.map((p:any)=>p.status).sort()).toEqual(['MISSING_TEMPLATE','MISSING_WORKDAY','READY','READY']);
+  expect((await call('/api/offers/assign-workdays','POST',{groupId:group,hash:'stale'},recruiter)).data.message).toBe('OFFER_PLAN_CHANGED');
+  let assigned=await call('/api/offers/assign-workdays','POST',{groupId:group,hash:plan.hash},recruiter);expect(assigned.status).toBe(200);expect(assigned.data.assigned).toBe(2);
+  const docs=(await db.query('select * from talent_offers.documents where group_id=$1 and revoked_at is null',[group])).rows;expect(docs).toHaveLength(2);
+  expect(new Set(docs.map((d:any)=>d.snapshot.workday))).toEqual(new Set(['FULL_TIME','SEMI_FULL']));
+  plan=assigned.data;
+  expect((await call('/api/offers/assign-workdays','POST',{groupId:group,hash:plan.hash},recruiter)).data.assigned).toBe(0);
+  const signed=docs.find((d:any)=>d.snapshot.workday==='FULL_TIME');
+  expect((await call('/api/public/offers/'+signed.token,'POST',{dni:signed.snapshot.dni,accepted:true,contentHash:signed.content_hash,signature:[Array.from({length:12},(_,i)=>[i*10,30+i])]})).status).toBe(200);
+  const newest=await call('/api/offers/templates','POST',{...base,workday:'FULL_TIME',title:'Nueva versión full'},analyst);expect(newest.status).toBe(200);
+  expect((await call('/api/offers/templates','POST',{...base,workday:'PART_TIME'},analyst)).status).toBe(200);
+  plan=(await call('/api/offers/workday-plan?group='+group,'GET',undefined,recruiter)).data;
+  expect(plan.participants.filter((p:any)=>p.status==='SIGNED')).toHaveLength(1);
+  assigned=await call('/api/offers/assign-workdays','POST',{groupId:group,hash:plan.hash},recruiter);expect(assigned.data.assigned).toBe(1);
+  expect((await db.query('select content_hash from talent_offers.documents where id=$1',[signed.id])).rows[0].content_hash).toBe(signed.content_hash);
+  // A jornada update invalidates the review and replaces only the unsigned participant.
+  plan=assigned.data;
+  await db.query("update talent.persons set annotations=annotations||jsonb_build_object('workSchedule','Fulltime') where id=$1",[people[1]]);
+  expect((await call('/api/offers/assign-workdays','POST',{groupId:group,hash:plan.hash},recruiter)).data.message).toBe('OFFER_PLAN_CHANGED');
+  plan=(await call('/api/offers/workday-plan?group='+group,'GET',undefined,recruiter)).data;
+  expect((await call('/api/offers/assign-workdays','POST',{groupId:group,hash:plan.hash},recruiter)).data.assigned).toBe(1);
+  const replaced=docs.find((d:any)=>d.snapshot.workday==='SEMI_FULL');expect((await call('/api/public/offers/'+replaced.token)).data.message).toBe('OFFER_NOT_FOUND');
+
+  // Captured workday takes precedence over a legacy profile preference, never the shift.
+  const source=(await db.query("select id from talent.recruitment_sources where company_id='tenant' limit 1")).rows[0].id;
+  await db.query("insert into talent.captures(company_id,id,person_id,owner_id,source_id,status,received_at,annotations) values('tenant','offer-workday-capture',$1,$2,$3,'Nuevo',now(),$4)",[people[3],admin,source,JSON.stringify({applicant:{formSubmission:{answers:{workday:'Semi full',availability:'Turno tarde'}},techCenterAnswers:{preferredCampaignId:campaignId}}})]);
+  const captured=(await db.query('select talent_offers.person_workday($1,$2,$3) as d',['tenant',people[3],campaignId])).rows[0].d;
+  expect(captured).toEqual({workday:'SEMI_FULL',raw:'Semi full',source:'Formulario'});
+  await db.query("update talent.captures set annotations=jsonb_set(annotations,'{applicant,formSubmission,answers,workday}','\"Turno mañana\"') where id='offer-workday-capture'");
+  expect((await db.query('select talent_offers.person_workday($1,$2,$3) as d',['tenant',people[3],campaignId])).rows[0].d.workday).toBeNull();
+  await expect(db.query('select talent_offers.require_signed($1,$2)',['tenant',group])).rejects.toThrow('OFFER_SIGNATURES_PENDING');
+  const fn=(await db.query("select has_function_privilege('anon','public.talent_offer_assign_workdays(uuid,text,text,text)','execute') as anon,has_function_privilege('service_role','public.talent_offer_assign_legacy(uuid,text,text,uuid)','execute') as legacy")).rows[0];expect(fn).toEqual({anon:false,legacy:false});
+ });
+
 });
