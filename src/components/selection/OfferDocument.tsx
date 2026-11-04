@@ -1,5 +1,6 @@
 import React,{useState} from 'react';
 import {CompanyLogo} from '../common/CompanyLogo';
+import {spatialOfferHtml} from './offerLayout';
 import {offerHtml} from './offerFormat';
 import './offerDocument.css';
 import {offerWorkdays,type OfferWorkday} from '../../../shared/offerWorkdays';
@@ -9,11 +10,12 @@ export const offerDate=(v?:string)=>v?new Intl.DateTimeFormat('es-PE',{dateStyle
 export function SignatureImage({signature}:{signature:Signature}){
  return <svg viewBox="0 0 600 200" role="img" aria-label="Firma del participante" className="max-h-40 w-full rounded-lg border bg-white">{signature.map((stroke,i)=><polyline key={i} points={stroke.map(p=>p.join(',')).join(' ')} fill="none" stroke="#143c55" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>)}</svg>;
 }
-export function OfferContent({document:d}:{document:OfferDocument}){
+export function OfferContent({document:d,spatial=false}:{document:OfferDocument;spatial?:boolean}){
  const s=d.snapshot;
- const html=offerHtml(s.content,offerValues(d));
- return <article className="offer-page space-y-5 rounded-2xl border border-slate-200 bg-white p-5 sm:p-8">
-  <header className="border-b border-slate-200 pb-5"><CompanyLogo companyName={s.company} className="mb-4"/><p className="text-xs font-semibold uppercase tracking-wider text-teal-700">Propuesta laboral · {s.company}</p><h2 className="mt-2 text-2xl font-bold text-[#0b2847]">{s.title}</h2><p className="mt-3 text-lg font-semibold">{s.name}</p>{s.dni&&<p className="text-sm">DNI / documento: {s.dni}</p>}<p className="text-sm text-slate-500">{s.campaign} · {s.group}</p>{s.workday&&<p className="mt-2 font-semibold">Jornada: {offerWorkdays[s.workday]}</p>}</header>
+ const original=offerHtml(s.content,offerValues(d));
+ const html=spatial?spatialOfferHtml(original):original;
+ return <article className={(spatial?'offer-spatial ':'')+'offer-page space-y-5 rounded-2xl border border-slate-200 bg-white p-5 sm:p-8'}>
+  <header className="border-b border-slate-200 pb-5"><CompanyLogo companyName={s.company} className="mb-4"/><p className="text-xs font-semibold uppercase tracking-wider text-teal-700">Propuesta laboral · {s.company}</p><h2 className="mt-2 text-2xl font-bold text-[#0b2847]">{s.title}</h2><div className={spatial?'offer-identity-grid':undefined}><div><p className="mt-3 text-lg font-semibold">{s.name}</p>{s.dni&&<p className="text-sm">DNI / documento: {s.dni}</p>}</div><div><p className="text-sm text-slate-500">{s.campaign} · {s.group}</p>{s.workday&&<p className="mt-2 font-semibold">Jornada: {offerWorkdays[s.workday]}</p>}</div></div></header>
   <div className="offer-rich" dangerouslySetInnerHTML={{__html:html}}/>
   {(d.signedAt||d.signed_at)&&<section className="space-y-3 border-t pt-5"><h3 className="font-semibold text-teal-800">Propuesta firmada</h3><p className="text-sm">{d.acceptance}</p>{d.signature&&<SignatureImage signature={d.signature}/>}<p className="text-sm">Firmada el {offerDate(d.signedAt||d.signed_at)} (hora de Lima).</p></section>}
   <p className="break-all text-xs text-slate-400">Código del documento: {d.id}<br/>Integridad del contenido: {d.contentHash||d.content_hash}</p>

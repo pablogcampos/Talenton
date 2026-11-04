@@ -21,3 +21,30 @@
 .offer-toolbar button:disabled{opacity:.4}
 .offer-toolbar button:focus-visible,.offer-toolbar select:focus-visible{outline:2px solid #0f766e;outline-offset:2px}
 @media(max-width:600px){.offer-rich{font-size:13px}.offer-rich th,.offer-rich td{padding:6px}.offer-page{padding:20px!important}}
+
+/* Public proposal composition only; the editor and other modules keep their layout. */
+.offer-public{min-width:0}
+.offer-spatial .offer-rich p{margin-bottom:7px}
+.offer-spatial .offer-rich h1{margin:18px 0 8px}
+.offer-spatial .offer-rich h2{margin:18px 0 8px}
+.offer-spatial .offer-rich h3{margin:14px 0 6px}
+.offer-spatial .offer-rich ul,.offer-spatial .offer-rich ol{margin:8px 0;padding-left:22px}
+.offer-spatial .offer-rich li+li{margin-top:4px}
+.offer-spatial .offer-rich table{width:100%;margin:10px 0}
+.offer-spatial .offer-rich th,.offer-spatial .offer-rich td{padding-top:7px;padding-bottom:7px;overflow-wrap:anywhere}
+.offer-spatial .offer-rich>:first-child{margin-top:0}
+.offer-identity-grid,.offer-facts-grid,.offer-bonuses-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px 28px}
+.offer-identity-grid{align-items:end;margin-top:12px}
+.offer-identity-grid p{margin-top:0}
+.offer-layout-item{min-width:0}
+.offer-spatial .offer-layout-item>:first-child{margin-top:0}
+.offer-spatial .offer-layout-item>:last-child{margin-bottom:0}
+.offer-facts-grid{margin:8px 0 14px}
+.offer-bonuses-grid{margin:10px 0 18px;row-gap:18px}
+@media(min-width:768px){
+ .offer-identity-grid,.offer-facts-grid,.offer-bonuses-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:767px){
+ .offer-public .offer-page{min-width:0}
+ .offer-public .offer-rich table{max-width:100%}
+}

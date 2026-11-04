@@ -1,3 +1,4 @@
+import {offerLayout} from './offerLayout';
 import {offerWorkdays} from '../../../shared/offerWorkdays';
 import pdfMake from 'pdfmake/build/pdfmake';
 import fonts from 'pdfmake/build/vfs_fonts';
@@ -19,15 +20,34 @@ async function logoImage(company:string){
 export async function offerPdfDefinition(d:OfferDocument):Promise<TDocumentDefinitions>{
  const s=d.snapshot,logo=await logoImage(s.company);
  const html=offerHtml(s.content,offerValues(d));
+ const convert=(value:string)=>htmlToPdfmake(value,{window:window as unknown as NonNullable<Parameters<typeof htmlToPdfmake>[1]>['window'],tableAutoSize:false,defaultStyles:{p:{margin:[0,0,0,6]},h1:{fontSize:21,margin:[0,12,0,8]},h2:{fontSize:16,margin:[0,12,0,6]},h3:{fontSize:13,margin:[0,8,0,5]},th:{fillColor:'#edf4f8',bold:true},td:{margin:[5,4,5,4]}}}) as Content;
+ const body:Content[]=[];let headings:Content[]=[];
+ const short=(value:string)=>{const el=document.createElement('div');el.innerHTML=value;return (el.textContent||'').length<1600;};
+ const append=(value:Content,bounded:boolean)=>{
+  if(headings.length){body.push({stack:[...headings,value],unbreakable:bounded} as Content);headings=[];}else body.push(value);
+ };
+ for(const block of offerLayout(html)){
+  if(block.kind==='flow'){
+   const value=block.html.join('');
+   if(/^<h[1-3][ >]/i.test(value)){headings.push(convert(value));continue;}
+   if(!value.trim())continue;
+   append(convert(value),!value.includes('<table')&&short(value));continue;
+  }
+  for(let i=0;i<block.html.length;i+=2){
+   const row=block.html.slice(i,i+2),bounded=row.every(short);
+   append({columns:row.map(value=>({width:'*',stack:[convert(value)]})),columnGap:22,margin:[0,0,0,10],unbreakable:bounded} as Content,bounded);
+  }
+ }
+ body.push(...headings);
  const content:Content[]=[
-  ...(logo?[{image:logo,width:132,margin:[0,0,0,16]} as Content]:[]),
+  ...(logo?[{image:logo,width:132,margin:[0,0,0,10]} as Content]:[]),
   {text:'PROPUESTA LABORAL · '+s.company,fontSize:10,color:'#0f766e',margin:[0,0,0,8]},
-  {text:s.title,fontSize:21,bold:true,margin:[0,0,0,14]},
+  {text:s.title,fontSize:21,bold:true,margin:[0,0,0,10]},
   {text:s.name,fontSize:14,bold:true},
   ...(s.dni?[{text:'DNI / documento: '+s.dni,fontSize:10}]:[]),
-  {text:s.campaign+' · '+s.group,fontSize:10,color:'#64748b',margin:[0,4,0,16]},
+  {text:s.campaign+' · '+s.group,fontSize:10,color:'#64748b',margin:[0,4,0,10]},
   ...(s.workday?[{text:'Jornada: '+offerWorkdays[s.workday],bold:true,margin:[0,0,0,12]} as Content]:[]),
-  htmlToPdfmake(html,{window:window as unknown as NonNullable<Parameters<typeof htmlToPdfmake>[1]>['window'],tableAutoSize:false,defaultStyles:{p:{margin:[0,0,0,8]},h1:{fontSize:21,margin:[0,16,0,10]},h2:{fontSize:16,margin:[0,16,0,8]},h3:{fontSize:13,margin:[0,12,0,6]},th:{fillColor:'#edf4f8',bold:true},td:{margin:[5,5,5,5]}}}) as Content
+  ...body
  ];
  if(d.signedAt||d.signed_at){
   const strokes=(d.signature||[]).map(stroke=>'<polyline fill="none" stroke="#143c55" stroke-width="2.5" points="'+stroke.map(p=>p.map(Number).join(',')).join(' ')+'"/>').join('');
@@ -40,11 +60,11 @@ export async function offerPdfDefinition(d:OfferDocument):Promise<TDocumentDefin
   if(!value||typeof value!=='object')return;
   const node=value as Record<string,unknown>;
   if((Array.isArray(node.style)?node.style:[node.style]).some(style=>typeof style==='string'&&/^html-h[123]$/.test(style)))node.headlineLevel=1;
-  if(node.table){const table=node.table as {body:unknown[][];widths:unknown[];headerRows?:number};table.widths=Array(table.body[0]?.length||1).fill('*');node.layout={hLineColor:()=> '#cbd5e1',vLineColor:()=> '#cbd5e1',hLineWidth:()=>0.5,vLineWidth:()=>0.5};}
+  if(node.table){const table=node.table as {body:unknown[][];widths:unknown[];headerRows?:number;dontBreakRows?:boolean;keepWithHeaderRows?:number};table.widths=Array(table.body[0]?.length||1).fill('*');table.dontBreakRows=true;if(JSON.stringify(table.body[0]).includes('html-th')){table.headerRows=1;table.keepWithHeaderRows=1;}node.layout={hLineColor:()=> '#cbd5e1',vLineColor:()=> '#cbd5e1',hLineWidth:()=>0.5,vLineWidth:()=>0.5};}
   Object.values(node).forEach(formatTables);
  };
  formatTables(content);
- return {pageSize:'A4',pageMargins:[42,42,42,46],defaultStyle:{font:'Roboto',fontSize:10.5,lineHeight:1.3,color:'#143c55'},content,
+ return {pageSize:'A4',pageMargins:[36,36,36,42],defaultStyle:{font:'Roboto',fontSize:10.5,lineHeight:1.3,color:'#143c55'},content,
   pageBreakBefore:(node,following)=>node.headlineLevel===1&&following.length===0,
   footer:(page,total)=>({text:page+' / '+total,alignment:'center',fontSize:8,color:'#64748b',margin:[0,15,0,0]})};
 }
