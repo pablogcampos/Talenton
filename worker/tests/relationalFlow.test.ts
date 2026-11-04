@@ -817,4 +817,33 @@ describe('Transición relacional PostgreSQL 17',()=>{
   const funcs=await db.query("select has_function_privilege('anon','public.talent_offer_public(text,jsonb,text)','execute') as anon,has_function_privilege('authenticated','public.talent_offer_assign(uuid,text,text,uuid)','execute') as authenticated");
   expect(funcs.rows[0]).toEqual({anon:false,authenticated:false});
  });
+
+ it('propuestas usa catálogo empresarial sin convocatorias y reutiliza la plantilla entre convocatorias de la misma campaña',async()=>{
+  await db.query('select public.talent_org_member_save($1,$1,$2,$3,true,true,$4,null)',[admin,'konectados','ADMIN','{}']);
+  env.ORG_ENABLED='true';
+  try{
+   const catalog=await call('/api/offers','GET',undefined,admin,'konectados');
+   expect(catalog.status).toBe(200);expect(catalog.data.groups).toHaveLength(0);expect(catalog.data.campaigns.length).toBeGreaterThan(0);
+   expect(catalog.data.campaigns.every((c:any)=>c.id.startsWith('catalog:'))).toBe(true);
+   const key=catalog.data.campaigns[0].id;
+   const template=await call('/api/offers/templates','POST',{campaignId:key,title:'Propuesta de campaña',content:'Condiciones para {{nombre}}, días, pagos y políticas.'},admin,'konectados');
+   expect(template.status).toBe(200);
+   expect((await call('/api/offers/templates','POST',{campaignId:key,title:'Ajena',content:'Condiciones para otra empresa ajena, inválidas.'},admin,'techcenter')).status).toBe(403);
+   const now=new Date().toISOString().slice(0,10);
+   for(let i=0;i<2;i++){
+    const cmp=await call('/api/campaigns','POST',{code:'OFFER-CATALOG-'+i,title:'Convocatoria '+i,vacancies:1,status:'EN_PROCESO',assignedAnalystId:admin,responsibles:[{userId:admin,target:1}],companyCampaignId:key.slice(8)},admin,'konectados');
+    expect(cmp.status).toBe(201);
+    const p=await call('/api/candidates','POST',{dni:'9966600'+i,fullName:'CI catálogo '+i,phone:'999888777',campaignId:cmp.data.id,recruiterId:admin,source:'Otro'},admin,'konectados');
+    expect(p.status).toBe(201);
+    expect((await call('/api/candidates/'+p.data.id+'/stage','POST',{stage:'APTO_CAPACITACION'},admin,'konectados')).status).toBe(200);
+    const g=await call('/api/trainings/from-selection','POST',{campaignId:cmp.data.id,candidateIds:[p.data.id],name:'Grupo catálogo '+i,code:'CAT-G-'+i,startDate:now,endDate:now,totalDays:2,modality:'PRESENCIAL',schedule:'09:00-16:00'},admin,'konectados');
+    expect(g.status).toBe(201);
+    expect((await call('/api/offers/assign','POST',{groupId:g.data.id,templateId:template.data},admin,'konectados')).status).toBe(200);
+    const refreshed=await call('/api/offers?group='+g.data.id,'GET',undefined,admin,'konectados');
+    expect(refreshed.data.groups[0].campaignKey).toBe(key);
+    expect(refreshed.data.templates.find((t:any)=>t.id===template.data).campaignKey).toBe(key);
+    expect(refreshed.data.documents).toHaveLength(1);
+   }
+  }finally{env.ORG_ENABLED=undefined;}
+ });
 });
