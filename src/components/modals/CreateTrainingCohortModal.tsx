@@ -291,7 +291,7 @@ export const CreateTrainingCohortModal: React.FC<CreateTrainingCohortModalProps>
                       <strong className="text-sm text-slate-900">{currentCampaign.title}</strong>
                     </div>
                     <p className="text-xs text-slate-500">
-                      {currentCampaign.company || currentCampaign.client} • Sede: {currentCampaign.location} • Modalidad: {currentCampaign.modality}
+                      {currentCampaign.company || currentCampaign.client} • Sede: {currentCampaign.location} • Modalidad: {currentCampaign.managementType}
                     </p>
                   </div>
                   <div className="text-right">
@@ -572,9 +572,9 @@ export const CreateTrainingCohortModal: React.FC<CreateTrainingCohortModalProps>
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {cand.selection?.scoreTotal && (
+                        {cand.selection?.scores?.overall && (
                           <span className="text-xs font-semibold px-2 py-1 bg-emerald-100 text-emerald-800 rounded-lg">
-                            Score: {cand.selection.scoreTotal} pts
+                            Score: {cand.selection.scores.overall} pts
                           </span>
                         )}
                         <span className={`text-xs font-medium px-2 py-0.5 border rounded-full ${alreadyAssigned ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>

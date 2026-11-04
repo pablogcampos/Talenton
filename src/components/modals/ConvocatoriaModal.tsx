@@ -142,7 +142,7 @@ export const ConvocatoriaModal: React.FC<ConvocatoriaModalProps> = ({
         setCompany(initialRq.companyName);setTitle(initialRq.profileRequired);setArea(initialRq.gerencia);
         setSalaryBase(initialRq.salary);setVariableBonus(initialRq.variableBonus);setMobilityBonus(initialRq.mobilityBonus);
         setVacancies(initialRq.fts);setLocation(initialRq.location || 'Por definir');
-        if(initialRq.modality)setManagementType(initialRq.modality);
+        if(initialRq.modality)setManagementType(initialRq.modality === 'REMOTA' ? 'REMOTO' : 'PRESENCIAL');
         setShift(initialRq.schedule);setRequestDate(initialRq.createdAt.slice(0,10));
         if(initialRq.kind==='STAFF')setServiceType('STAFF_ADMIN');
         setObservations(`RQ ${initialRq.id} · Solicitante: ${initialRq.requesterName} · Criticidad: ${initialRq.criticality} · Ingreso esperado: ${initialRq.expectedStart}${initialRq.observations?` · ${initialRq.observations}`:''}`);

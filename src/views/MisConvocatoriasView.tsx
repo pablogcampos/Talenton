@@ -968,7 +968,7 @@ export const MisConvocatoriasView: React.FC = () => {
       <SourcesModal
         isOpen={isSourcesModalOpen}
         onClose={() => setIsSourcesModalOpen(false)}
-        campaignId={activeCampaign.id}
+        convocatoria={activeCampaign}
       />
 
       {/* Quick Contact Logger Modal */}
@@ -1085,7 +1085,7 @@ export const MisConvocatoriasView: React.FC = () => {
         <CreateTrainingCohortModal
           isOpen={true}
           onClose={() => setIsCreateCohortModalOpen(false)}
-          defaultCampaignId={activeCampaign?.id}
+          initialCampaignId={activeCampaign?.id}
         />
       )}
 

@@ -178,7 +178,7 @@ export const ParticipantesView: React.FC = () => {
                   const attPercent = attCount > 0 ? Math.round((presentCount / attCount) * 100) : 100;
                   
                   const evals = cand.training?.evaluations || [];
-                  const avg = cand.training?.finalGrade ?? cand.training?.finalAverage ??
+                  const avg = cand.training?.finalGrade ?? cand.training?.finalGrade ??
                     (evals.length > 0 ? Number((evals.reduce((a, b) => a + b.score, 0) / evals.length).toFixed(1)) : null);
 
                   return (

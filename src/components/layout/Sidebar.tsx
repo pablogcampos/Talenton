@@ -49,7 +49,7 @@ export const Sidebar: React.FC<{ navigationOpen?: boolean; onCloseNavigation?: (
     if (mod === 'FORMACION') return ['JEFE_FORMACION', 'COORDINADOR_FORMACION', 'FORMADOR', 'ANALISTA_SELECCION'].includes(currentUser.role);
     if (mod === 'TALENTO') return ['JEFE_TALENTO', 'ANALISTA_TALENTO'].includes(currentUser.role);
     if (mod === 'ANALITICA') return ['JEFE_SELECCION', 'JEFE_FORMACION', 'JEFE_TALENTO'].includes(currentUser.role);
-    if (mod === 'ADMINISTRACION') return currentUser.role === 'ADMIN';
+    if (mod === 'ADMINISTRACION') return false;
     if (mod === 'OPERACIONES') return ['JEFE_OPERACIONES', 'COORDINADOR_OPERACIONES'].includes(currentUser.role);
     return false;
   };

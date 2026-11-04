@@ -266,6 +266,10 @@ export const Candidate360Modal: React.FC<Candidate360ModalProps> = ({
     const now = new Date();
     addCandidateEvaluationRecord(candidate.id, {
       name: evalName,
+      title: evalName,
+      maxScore: 100,
+      passed: evalResult === 'APTO',
+      comments: evalObservation,
       date: now.toISOString().split('T')[0],
       score: Number(evalScore),
       result: evalResult,
@@ -746,7 +750,7 @@ export const Candidate360Modal: React.FC<Candidate360ModalProps> = ({
                       </label>
                       <select
                         value={interviewStatus}
-                        onChange={e => setInterviewStatus(e.target.value as 'APTO' | 'NO_APTO' | 'PENDIENTE')}
+                        onChange={e => setInterviewStatus(e.target.value as 'APTO' | 'NO_APTO')}
                         className="w-full text-xs font-bold bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900"
                       >
                         <option value="APTO">Apto</option>
@@ -874,7 +878,7 @@ export const Candidate360Modal: React.FC<Candidate360ModalProps> = ({
                       </label>
                       <select
                         value={techStatus}
-                        onChange={e => setTechStatus(e.target.value as 'APRUEBA' | 'APRUEBA_CON_OBSERVACION' | 'NO_APRUEBA' | 'PENDIENTE')}
+                        onChange={e => setTechStatus(e.target.value as 'APRUEBA' | 'APRUEBA_CON_OBSERVACION' | 'NO_APRUEBA')}
                         className="w-full text-xs font-bold bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900"
                       >
                         <option value="APRUEBA">Aprueba</option>

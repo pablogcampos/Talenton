@@ -133,8 +133,7 @@ export const OjtView: React.FC = () => {
       sph,
       spd,
       ahtSeconds: Number(metricAht),
-      qaScore: Number(metricQa),
-      attendanceStatus: 'PRESENTE'
+      qaScore: Number(metricQa)
     }); setShowMetricModal(false); } catch (error) { setActionError(getWorkerErrorMessage(error, 'No se pudo guardar la métrica.')); } finally { setIsSaving(false); }
   };
 
@@ -151,10 +150,12 @@ export const OjtView: React.FC = () => {
     setActionError(''); setIsSaving(true);
     try { await addOjtFeedback(activeCandidate.id, {
       date: fbDate,
-      strengths: fbStrong,
-      areasToImprove: fbImprove,
+      strongPoints: fbStrong,
+      improvementPoints: fbImprove,
       actionPlan: fbPlan,
-      coachName: activeCandidate.ojt?.coachName || 'Formador OJT asignado'
+      coach: activeCandidate.ojt?.coachName || 'Formador OJT asignado',
+      commitmentDate: fbDate,
+      participantSigned: false
     }); setShowFeedbackModal(false);
     setFbStrong('');
     setFbImprove('');
@@ -540,17 +541,17 @@ export const OjtView: React.FC = () => {
                   {activeCandidate.ojt.coachingFeedbacks.map((fb, idx) => (
                     <div key={idx} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900">Formador: {fb.coachName}</span>
+                        <span className="font-bold text-slate-900">Formador: {fb.coach}</span>
                         <span className="text-[11px] text-slate-500">{fb.date}</span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
                         <div>
                           <strong className="text-emerald-700 block">Fortalezas:</strong>
-                          <span className="text-slate-600">{fb.strengths || '-'}</span>
+                          <span className="text-slate-600">{fb.strongPoints || '-'}</span>
                         </div>
                         <div>
                           <strong className="text-amber-700 block">Oportunidades:</strong>
-                          <span className="text-slate-600">{fb.areasToImprove || '-'}</span>
+                          <span className="text-slate-600">{fb.improvementPoints || '-'}</span>
                         </div>
                         <div>
                           <strong className="text-indigo-700 block">Plan de Acción:</strong>

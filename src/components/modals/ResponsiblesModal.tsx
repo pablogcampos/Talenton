@@ -318,7 +318,7 @@ export const ResponsiblesModal: React.FC<ResponsiblesModalProps> = ({
                                 {cumplimiento}%
                               </span>
                               {isCompleted && (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" title="Meta cumplida" />
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" aria-label="Meta cumplida" />
                               )}
                             </div>
                           </td>

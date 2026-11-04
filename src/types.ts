@@ -128,6 +128,8 @@ export type TrainingCohortStatus =
   | 'CANCELADA';
 
 export type ParticipantTrainingStatus = 
+  | 'OJT_APROBADO'
+  | 'OJT_NO_APROBADO'
   | 'PENDIENTE_INICIO'
   | 'EN_CAPACITACION'
   | 'PENDIENTE_OJT'
@@ -268,9 +270,13 @@ export interface ContactHistoryItem {
   agentName: string;
   outcome: ContactOutcome;
   nextStep?: string;
+  nextStepDate?: string;
 }
 
 export interface EvaluationItem {
+  name?: string;
+  result?: 'APTO' | 'NO_APTO' | 'PENDIENTE';
+  observations?: string;
   id: string;
   title: string;
   evaluator: string;
@@ -514,6 +520,7 @@ export interface CampaignCall {
 }
 
 export interface CandidateRecord extends CandidatePreferences {
+  companyId?: string;
   id: string; // Único en todo el ciclo de vida
   captureOnly?: boolean; // Registrado por captación, pendiente de vincular a convocatoria
   dni: string;
@@ -618,6 +625,9 @@ export interface CandidateRecord extends CandidatePreferences {
     startDate?: string;
     targetEndDate?: string;
     status: OjtStatus;
+    totalSales?: number;
+    averageSph?: number;
+    averageSpd?: number;
     dailyMetrics: OjtDailyMetric[];
     skillsMatrix: OjtSkillsMatrix;
     coachingFeedbacks: OjtFeedback[];
