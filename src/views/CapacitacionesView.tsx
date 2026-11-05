@@ -1,3 +1,4 @@
+import {workerApi,getWorkerErrorMessage} from '../services/workerApi';
 import { OffersPanel } from './LaborOffersView';
 import { TrainingPreparation } from '../components/training/TrainingPreparation';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -101,6 +102,8 @@ export const CapacitacionesView: React.FC<CapacitacionesViewProps> = ({ onOpenNe
   const [searchText, setSearchText] = useState('');
   const [activeTab, setActiveTab] = useState<AdminTab>('RESUMEN');
   const [showLocalCreateModal, setShowLocalCreateModal] = useState(false);
+  const [adminAction,setAdminAction]=useState<{cohort:TrainingCohort;action:'DELETE'|'ARCHIVE'}|null>(null);
+  const [adminBusy,setAdminBusy]=useState(false),[adminError,setAdminError]=useState('');
   const [assignTrainerTarget, setAssignTrainerTarget] = useState<TrainingCohort | null>(null);
   const [scheduleDraft, setScheduleDraft] = useState({
     startDate: '',
@@ -310,9 +313,11 @@ export const CapacitacionesView: React.FC<CapacitacionesViewProps> = ({ onOpenNe
                     <option value="FINALIZADA">Finalizada</option>
                     <option value="CANCELADA">Cancelada</option>
                   </select>
-                  <button className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#DCE5EA] text-slate-600 hover:bg-slate-50" title="Más acciones">
-                    <MoreVertical className="h-4 w-4" />
-                  </button>
+                  {currentUser.role==='ADMIN'&&<details className="relative"><summary aria-label="Acciones de administrador" className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-[#DCE5EA] text-slate-600 hover:bg-slate-50"><MoreVertical className="h-4 w-4"/></summary><div className="absolute right-0 top-10 z-40 w-56 rounded-xl border bg-white p-2 shadow-lg">
+                  <button className="w-full rounded-lg p-3 text-left text-xs hover:bg-slate-50" onClick={()=>setAssignTrainerTarget(selectedCohort)}>Reasignar formador</button>
+                  <button className="w-full rounded-lg p-3 text-left text-xs hover:bg-slate-50" onClick={()=>{setAdminError('');setAdminAction({cohort:selectedCohort,action:'ARCHIVE'});}}>Archivar capacitación</button>
+                  <button className="w-full rounded-lg p-3 text-left text-xs text-red-700 hover:bg-red-50" onClick={()=>{setAdminError('');setAdminAction({cohort:selectedCohort,action:'DELETE'});}}>Eliminar capacitación</button>
+                  </div></details>}
                 </div>
               </div>
 
@@ -359,9 +364,9 @@ export const CapacitacionesView: React.FC<CapacitacionesViewProps> = ({ onOpenNe
                                 <div className="text-[10px] text-slate-500">{item.label}</div>
                                 <div className="mt-1 truncate text-sm font-bold text-slate-950">{item.value}</div>
                                 {item.label === 'Capacidad' && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-teal-500" style={{ width: `${Math.min(100, occupancy)}%` }} /></div>}
-                                {item.action ? (
+                                {item.action ? ((!selectedCohort.trainerId||currentUser.role==='ADMIN') ? (
                                   <button onClick={() => setAssignTrainerTarget(selectedCohort)} className="mt-2 text-[10px] font-bold text-sky-700 hover:text-sky-900">{item.detail}</button>
-                                ) : <div className={`mt-1 text-[10px] ${item.label === 'Capacidad' && availableSeats === 0 ? 'font-semibold text-emerald-700' : 'text-slate-500'}`}>{item.detail}</div>}
+                                ) : null) : <div className={`mt-1 text-[10px] ${item.label === 'Capacidad' && availableSeats === 0 ? 'font-semibold text-emerald-700' : 'text-slate-500'}`}>{item.detail}</div>}
                               </div>
                             </div>
                           </div>
@@ -479,6 +484,7 @@ export const CapacitacionesView: React.FC<CapacitacionesViewProps> = ({ onOpenNe
         </article>
       </section>
 
+      {adminAction&&currentUser.role==='ADMIN'&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4"><section role="dialog" aria-modal="true" aria-label="Confirmar acción administrativa" className="w-full max-w-lg space-y-4 rounded-2xl bg-white p-6"><h2 className="text-xl font-bold">{adminAction.action==='DELETE'?'Eliminar':'Archivar'} capacitación</h2><p className="text-sm font-semibold">{adminAction.cohort.code} · {adminAction.cohort.name}</p><p className="text-sm text-slate-600">{adminAction.action==='DELETE'?'Solo se permite antes de iniciar y sin asistencia, notas ni propuestas firmadas. Los postulantes quedan disponibles para otra capacitación; se conserva la trazabilidad de la eliminación.':'Se retirará de las capacitaciones activas y se bloqueará su operación. Se conservan participantes, asistencias, notas y documentos.'}</p>{adminError&&<p role="alert" className="text-sm text-red-700">{adminError}</p>}<div className="flex justify-end gap-3"><button disabled={adminBusy} className="rounded-lg border px-4 py-2" onClick={()=>setAdminAction(null)}>Cancelar</button><button disabled={adminBusy} className="rounded-lg bg-[#143c55] px-4 py-2 text-white disabled:opacity-50" onClick={async()=>{setAdminBusy(true);setAdminError('');try{await workerApi('/api/trainings/'+encodeURIComponent(adminAction.cohort.id)+'/admin-action',{method:'POST',body:JSON.stringify({action:adminAction.action})},adminAction.cohort.companyId);setAdminAction(null);}catch(e){setAdminError(getWorkerErrorMessage(e));}finally{setAdminBusy(false);}}}>{adminBusy?'Procesando…':'Confirmar'}</button></div></section></div>}
       {assignTrainerTarget && (
         <AssignTrainerModal
           isOpen

@@ -6,7 +6,7 @@ import { RelationalRuntime, type RuntimeEnv } from './relationalRuntime';
 import { relationalIdentity } from './supabaseIdentity';
 import { organizationRequest,organizationUserGuard,organizationUserHome } from './organization';
 import { unifiedRequest } from './unified';
-import { SupabaseError, type SupabaseEnv } from './supabase';
+import { supabaseServerHeaders, SupabaseError, type SupabaseEnv } from './supabase';
 import { handleSelectionAdvanced, checkProcessStage } from './selectionAdvanced';
 import { handleOperations } from './operations';
 import { surveyRpc, publicSurvey } from './surveys';
@@ -389,6 +389,7 @@ async function createTrainingFromSelection(request: Request, env: Env, actor: Pr
 async function injectTrainingParticipants(request:Request,env:Env,actor:Profile,id:string){
  requireSelectionManager(actor);
  const training=unpack((await firestore(env,'trainings/'+id)).fields??{});
+ if(training.archivedAt)throw new Error('TRAINING_ADMIN_NOT_FOUND');
  const campaignId=String(training.campaignId||'');
  if(training.companyId!==actor.companyId||!campaignAllowed(actor,await campaign(env,campaignId)))throw new Error('FORBIDDEN');
  if(!['PENDIENTE_ASIGNACION','PROGRAMADA','EN_CAPACITACION'].includes(String(training.status)))throw new Error('TRAINING_INJECTION_CLOSED');
@@ -431,6 +432,7 @@ async function assignTrainingTrainer(request: Request, env: Env, actor: Profile,
   if (trainer.companyId !== training.companyId) throw new Error('TRAINER_COMPANY_MISMATCH');
   const now = new Date().toISOString();
   const previousTrainerId = String(training.trainerId ?? '');
+  if(previousTrainerId&&previousTrainerId!==trainerId&&actor.role!=='ADMIN')throw new Error('FORBIDDEN');
   const trainerName = String(trainer.displayName ?? trainer.name ?? trainer.username ?? 'Formador');
   if (previousTrainerId === trainerId) return response({ ok: true, alreadyAssigned: true, training }, 200, cors(request, env));
   const nextStatus = training.status === 'PENDIENTE_ASIGNACION' ? 'PROGRAMADA' : training.status;
@@ -489,6 +491,7 @@ async function trainingParticipant(env: Env, trainingId: string, candidateId: st
 }
 async function requireTrainingAccess(env: Env, actor: Profile, trainingId: string): Promise<Record<string, unknown>> {
   const training = unpack((await firestore(env, `trainings/${trainingId}`)).fields ?? {});
+  if(training.archivedAt)throw new Error('TRAINING_ADMIN_NOT_FOUND');
   const allowed = actor.role === 'ADMIN' || actor.role === 'JEFE_FORMACION' || (actor.role === 'COORDINADOR_FORMACION' && (actor.scope.includes(String(training.campaignId ?? '')) || training.coordinatorId === actor.uid)) || (actor.role === 'FORMADOR' && training.trainerId === actor.uid);
   if (!allowed || !actor.allowedModules.includes('FORMACION') || (training.companyId !== actor.companyId && actor.role !== 'ADMIN')) throw new Error('FORBIDDEN'); return training;
 }
@@ -1318,6 +1321,19 @@ async function relationalBootstrap(request:Request,env:Env,actor:Profile) {
 
 const worker={async fetch(request:Request,env:Env):Promise<Response>{
   const path=new URL(request.url).pathname;
+  const adminTraining=path.match(/^\/api\/trainings\/([^/]+)\/admin-action$/);
+  if(adminTraining&&request.method==='POST'){
+   try{
+    if(!originAllowed(request,env))throw new SupabaseError(403,'ORIGIN_NOT_ALLOWED');
+    const actor=await relationalSession(request,env);if(actor.role!=='ADMIN')throw new SupabaseError(403,'FORBIDDEN');
+    const input=await request.json<{action?:string}>();
+    const r=await fetch(env.SUPABASE_URL!.replace(/\/$/,'')+'/rest/v1/rpc/talent_training_admin_action',{method:'POST',headers:supabaseServerHeaders(env),body:JSON.stringify({p_actor:actor.authUserId,p_company:actor.companyId,p_group:decodeURIComponent(adminTraining[1]),p_action:input.action})});
+    const data=await r.json() as any;
+    if(!r.ok)throw new SupabaseError(data.code==='42501'?403:409,/^TRAINING_[A-Z_]+$/.test(data.message||'')?data.message:'FORBIDDEN');
+    return response(data,200,{...cors(request,env),'Cache-Control':'no-store'});
+   }catch(e){return response({message:e instanceof SupabaseError?e.code:'TRAINING_ADMIN_INVALID'},e instanceof SupabaseError?e.status:400,cors(request,env));}
+  }
+
   if(request.method!=='OPTIONS' && (path==='/api/offers'||path.startsWith('/api/offers/')||path.startsWith('/api/public/offers/'))){
     try{
       if(!originAllowed(request,env))throw new SupabaseError(403,'ORIGIN_NOT_ALLOWED');

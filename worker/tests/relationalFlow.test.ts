@@ -65,7 +65,7 @@ describe('Transición relacional PostgreSQL 17',()=>{
     else if(fn==='talent_session_profile')result=await db.query('select public.talent_session_profile($1::uuid) as result',[body.p_auth]);
     else if(fn==='talent_runtime_snapshot')result=await db.query('select public.talent_runtime_snapshot($1::uuid,$2) as result',[body.p_actor,body.p_public_hash]);
     else if(fn==='talent_runtime_commit'){if(failNextCaptureCommit){failNextCaptureCommit=false;throw new Error('SIMULATED_COMMIT_FAILURE');}result=await db.query('select public.talent_runtime_commit($1::uuid,$2,$3,$4,$5::jsonb,$6::text[]) as result',[body.p_actor,body.p_public_hash,body.p_company,body.p_revision,JSON.stringify(body.p_rows),body.p_resets||[]]);}
-    else if(fn?.startsWith('talent_offer_')||fn?.startsWith('talent_org_')||fn?.startsWith('talent_survey_')||fn?.startsWith('talent_unlock_')){const keys=Object.keys(body);result=await db.query('select public.'+fn+'('+keys.map((k,i)=>k+'=> $'+(i+1)).join(',')+') as result',keys.map(k=>['p_rows','p_grants'].includes(k)?JSON.stringify(body[k]):Array.isArray(body[k])?'{'+body[k].join(',')+'}':body[k]&&typeof body[k]==='object'?JSON.stringify(body[k]):body[k]));}
+    else if(fn?.startsWith('talent_training_')||fn?.startsWith('talent_offer_')||fn?.startsWith('talent_org_')||fn?.startsWith('talent_survey_')||fn?.startsWith('talent_unlock_')){const keys=Object.keys(body);result=await db.query('select public.'+fn+'('+keys.map((k,i)=>k+'=> $'+(i+1)).join(',')+') as result',keys.map(k=>['p_rows','p_grants'].includes(k)?JSON.stringify(body[k]):Array.isArray(body[k])?'{'+body[k].join(',')+'}':body[k]&&typeof body[k]==='object'?JSON.stringify(body[k]):body[k]));}
     else throw new Error('UNKNOWN_RPC '+fn);
     await db.exec('commit');return fn==='talent_runtime_commit'?new Response(null,{status:204}):Response.json(result.rows[0].result??null);
    }catch(e:any){await db.exec('rollback');console.log('SQL ERROR',e.code,e.message);return Response.json({code:e.code,message:e.message},{status:e.code==='PT409'?409:400});}
@@ -973,6 +973,35 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect((await call('/api/trainings/'+group+'/theory/finish','POST',{grades:[ids[0],ids[1],ids[2]].map(candidateId=>({candidateId,score:18}))},trainer)).data.message).toBe('OFFER_SIGNATURES_PENDING');
   await db.query("update talent.training_groups set status='CANCELADA' where id=$1",[group]);
   expect((await call(path,'POST',{candidateIds:[ids[3]]},analyst)).data.message).toBe('TRAINING_INJECTION_CLOSED');
+ });
+
+ it('solo admin elimina grupos sin actividad, archiva con historial y restringe reasignación',async()=>{
+  const analyst='40000000-0000-4000-8000-000000000005';
+  const day=new Date().toISOString().slice(0,10);
+  const person=await call('/api/candidates','POST',{dni:'99333001',fullName:'CI eliminación',campaignId,recruiterId:admin,phone:'999888777'});expect(person.status).toBe(201);
+  expect((await call('/api/candidates/'+person.data.id+'/stage','POST',{stage:'APTO_CAPACITACION'})).status).toBe(200);
+  const created=await call('/api/trainings/from-selection','POST',{campaignId,candidateIds:[person.data.id],name:'Eliminar prueba',code:'DELETE-CI',startDate:day,endDate:day,totalDays:2,modality:'PRESENCIAL',schedule:'09:00-15:00'});expect(created.status).toBe(201);const id=created.data.id,path='/api/trainings/'+id+'/admin-action';
+  expect((await call(path,'POST',{action:'DELETE'},analyst)).status).toBe(403);
+  expect((await call(path,'POST',{action:'ARCHIVE'},trainer)).status).toBe(403);
+  expect((await call(path,'POST',{action:'DELETE'},other)).status).not.toBe(200);
+  expect((await call(path,'POST',{action:'DELETE'})).status).toBe(200);
+  const snap=(await call('/api/bootstrap')).data;expect(snap.cohorts.some((g:any)=>g.id===id)).toBe(false);expect(snap.candidates.find((c:any)=>c.id===person.data.id).trainingId).toBeUndefined();
+  const recreated=await call('/api/trainings/from-selection','POST',{campaignId,candidateIds:[person.data.id],name:'Archivar prueba',code:'ARCHIVE-CI',startDate:day,endDate:day,totalDays:2,modality:'PRESENCIAL',schedule:'09:00-15:00'});expect(recreated.status).toBe(201);const existing=recreated.data.id;
+  expect((await call('/api/trainings/'+existing+'/trainer','POST',{trainerId:trainer})).status).toBe(200);
+  expect((await call('/api/trainings/'+existing+'/theory/start','POST',{})).status).toBe(200);
+  expect((await call('/api/trainings/'+existing+'/admin-action','POST',{action:'DELETE'})).data.message).toBe('TRAINING_DELETE_HAS_ACTIVITY');
+  const before=(await db.query('select count(*)::int n from talent.participants where group_id=$1',[existing])).rows[0].n;
+  expect((await call('/api/trainings/'+existing+'/admin-action','POST',{action:'ARCHIVE'})).status).toBe(200);
+  expect((await db.query('select count(*)::int n from talent.participants where group_id=$1',[existing])).rows[0].n).toBe(before);
+  expect((await call('/api/trainings/'+existing+'/theory/start','POST',{})).data.message).toBe('TRAINING_ADMIN_NOT_FOUND');
+  const active=(await db.query("select id from talent.training_groups where archived_at is null and trainer_id is not null limit 1")).rows[0].id;
+  // Existing trainer remains intact after a non-admin reassignment attempt.
+  await db.query("update talent.profiles set role='COORDINADOR_FORMACION' where id=$1 and company_id='tenant'",[analyst]);
+  await db.query("insert into talent.user_modules(company_id,id,user_id,module) values('tenant','admin-actions-coord',$1,'FORMACION') on conflict do nothing",[analyst]);
+  await db.query("update talent.training_groups set coordinator_id=$1 where id=$2",[analyst,active]);
+  const t2='40000000-0000-4000-8000-000000000099';await db.query('insert into auth.users values($1)',[t2]);await db.query("insert into talent.profiles(company_id,id,auth_user_id,username,display_name,role,status) values('tenant',$1::text,$1::uuid,'ci.trainer2','Trainer dos','FORMADOR','ACTIVO')",[t2]);await db.query("insert into talent.user_modules(company_id,id,user_id,module) values('tenant','trainer2-module',$1,'FORMACION')",[t2]);
+  expect((await call('/api/trainings/'+active+'/trainer','POST',{trainerId:t2},analyst)).status).toBe(403);
+  expect((await call('/api/trainings/'+active+'/trainer','POST',{trainerId:t2})).status).toBe(200);
  });
 
 });
