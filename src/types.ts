@@ -593,6 +593,7 @@ export interface CandidateRecord extends CandidatePreferences {
 
   // 2. Módulo Formación
   training: {
+    injection?: {date:string;at:string;userId:string;userName:string};
     cohortId?: string;
     cohortName?: string;
     cohortCode?: string;

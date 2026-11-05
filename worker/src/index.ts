@@ -386,6 +386,39 @@ async function createTrainingFromSelection(request: Request, env: Env, actor: Pr
   }
   return response(training, 201, cors(request, env));
 }
+async function injectTrainingParticipants(request:Request,env:Env,actor:Profile,id:string){
+ requireSelectionManager(actor);
+ const training=unpack((await firestore(env,'trainings/'+id)).fields??{});
+ const campaignId=String(training.campaignId||'');
+ if(training.companyId!==actor.companyId||!campaignAllowed(actor,await campaign(env,campaignId)))throw new Error('FORBIDDEN');
+ if(!['PENDIENTE_ASIGNACION','PROGRAMADA','EN_CAPACITACION'].includes(String(training.status)))throw new Error('TRAINING_INJECTION_CLOSED');
+ const referenced=new Set<string>();
+ const input=unqualifyCandidates(await request.json<Record<string,unknown>>(),referenced) as {candidateIds?:unknown};
+ if([...referenced].some(company=>company!==actor.companyId))throw new Error('FORBIDDEN');
+ if(!Array.isArray(input.candidateIds)||!input.candidateIds.length||input.candidateIds.length>200||input.candidateIds.some(id=>typeof id!=='string'))throw new Error('INVALID_TRAINING');
+ const ids=[...new Set(input.candidateIds as string[])];const people:Record<string,unknown>[]=[];
+ const existing=strings(training.participantIds);
+ for(const candidateId of ids){
+  const person=await candidate(env,candidateId);
+  if(person.companyId!==actor.companyId||person.campaignId!==campaignId||!candidateAllowed(actor,person))throw new Error('FORBIDDEN');
+  if(person.trainingId||existing.includes(candidateId))throw new Error('CANDIDATE_ALREADY_IN_TRAINING');
+  if(!isRecord(person.selection)||person.selection.stage!=='APTO_CAPACITACION'||person.selectionActive===false)throw new Error('CANDIDATE_NOT_READY_FOR_TRAINING');
+  people.push(person);
+ }
+ const now=new Date().toISOString();const date=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(now));
+ const injection={date,at:now,userId:actor.uid,userName:actor.displayName};
+ const status=training.status==='EN_CAPACITACION'?'EN_CAPACITACION':'PENDIENTE_INICIO';
+ const history=Array.isArray(training.managementHistory)?training.managementHistory:[];
+ await firestore(env,'trainings/'+id,'PATCH',{fields:fields({participantIds:[...existing,...ids],maxCapacity:Math.max(numberValue(training.maxCapacity),existing.length+ids.length),managementHistory:[...history,{date:now,userId:actor.uid,userName:actor.displayName,action:'INYECCION',reason:'Inyección de '+ids.length+' participantes aptos.',candidateIds:ids}],updatedAt:now})});
+ for(const person of people){
+  const candidateId=String(person.id),selection=person.selection as Record<string,unknown>;
+  const trace={date:now,userId:actor.uid,userName:actor.displayName,status,reason:'Inyección a capacitación',injection};
+  const participant={candidateId,companyId:actor.companyId,campaignId,status,injection,attendance:[],evaluations:[],traceability:[trace],ojt:{status:'NO_INICIADO',dailyMetrics:[],traceability:[]},createdAt:now};
+  await firestore(env,'trainings/'+id+'/participants/'+candidateId,'PATCH',{fields:fields(participant)});
+  await firestore(env,'candidates/'+candidateId,'PATCH',{fields:fields({currentProcess:'FORMACION',trainingId:id,training:{cohortId:id,status,injection,attendance:[],evaluations:[]},ojt:{status:'NO_INICIADO',dailyMetrics:[],skillsMatrix:{},coachingFeedbacks:[]},selection:{...selection,traceability:[...(Array.isArray(selection.traceability)?selection.traceability:[]),{id:'TR-'+crypto.randomUUID(),date,time:now.slice(11,16),user:actor.displayName,previousStage:'APTO_CAPACITACION',newStage:'APTO_CAPACITACION',observation:'Inyección a capacitación: '+id}]},updatedAt:now,updatedBy:actor.uid})});
+ }
+ return response({ok:true,count:ids.length,injection},201,cors(request,env));
+}
 async function assignTrainingTrainer(request: Request, env: Env, actor: Profile, id: string) {
   const training = await requireTrainingManagerAccess(env, actor, id);
   const input = await request.json<{ trainerId?: unknown; notes?: unknown }>();
@@ -598,6 +631,7 @@ async function appendParticipantHistory(request: Request, env: Env, actor: Profi
   } else {
     const field = kind; const history = Array.isArray(participant[field]) ? participant[field] : []; const entry = { ...input, id: `${kind}-${crypto.randomUUID()}`, candidateId, recordedAt: now, trainerId: actor.uid, trainerName: actor.displayName };
     if (kind === 'attendance' && (typeof input.date !== 'string' || !['PRESENTE', 'TARDANZA', 'FALTA', 'JUSTIFICADO', 'NSP', 'FALTA_JUSTIFICADA', 'FALTA_INJUSTIFICADA'].includes(String(input.attendance ?? input.status)))) throw new Error('INVALID_ATTENDANCE');
+    if(kind==='attendance'&&isRecord(participant.injection)&&typeof participant.injection.date==='string'&&String(input.date)<participant.injection.date)throw new Error('ATTENDANCE_BEFORE_INJECTION');
     if (kind === 'evaluations') {
       if (participant.status !== 'EN_CAPACITACION' || ['FINALIZADA', 'CANCELADA'].includes(String(training.status))) throw new Error('INVALID_PARTICIPANT_STATUS');
       const evaluationId = String(input.evaluationId ?? '');
@@ -1190,6 +1224,8 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     const attendanceUnlockMatch = url.pathname.match(/^\/api\/trainings\/([^/]+)\/attendance-unlocks\/(\d{4}-\d{2}-\d{2})$/);
     if (request.method === 'POST' && attendanceUnlockMatch) return await requestAttendanceUnlock(request, env, actor, decodeURIComponent(attendanceUnlockMatch[1]), attendanceUnlockMatch[2]);
     if (request.method === 'PATCH' && attendanceUnlockMatch) return await decideAttendanceUnlock(request, env, actor, decodeURIComponent(attendanceUnlockMatch[1]), attendanceUnlockMatch[2]);
+    const injectionMatch=url.pathname.match(/^\/api\/trainings\/([^/]+)\/inject$/);
+    if(injectionMatch&&request.method==='POST')return await injectTrainingParticipants(request,env,actor,decodeURIComponent(injectionMatch[1]));
     const participantMatch = url.pathname.match(/^\/api\/trainings\/([^/]+)\/participants\/([^/]+)\/(attendance|evaluations|status)$/);
     if (request.method === 'POST' && participantMatch) {
       const action = participantMatch[3];

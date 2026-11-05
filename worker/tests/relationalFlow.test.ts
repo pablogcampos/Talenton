@@ -947,4 +947,32 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect((await db.query("select has_function_privilege('anon','public.talent_offer_group_public(text,jsonb,text)','execute') as anon,has_function_privilege('service_role','public.talent_offer_catalog_before_group_links(uuid,text,text)','execute') as legacy")).rows[0]).toEqual({anon:false,legacy:false});
  });
 
+ it('analista inyecta aptos antes y durante teoría con auditoría, sin duplicados ni faltas previas',async()=>{
+  const analyst='40000000-0000-4000-8000-000000000005',recruiter='40000000-0000-4000-8000-000000000004';
+  const cmp=await call('/api/campaigns','POST',{code:'INJECTION',title:'Prueba inyección',vacancies:10,status:'EN_PROCESO',assignedAnalystId:analyst,responsibles:[{userId:recruiter,target:10}]});expect(cmp.status).toBe(201);
+  const ids:string[]=[];
+  for(let i=0;i<5;i++){const c=await call('/api/candidates','POST',{dni:'9944400'+i,fullName:'CI inyección '+i,campaignId:cmp.data.id,recruiterId:recruiter,phone:'999888777'});expect(c.status).toBe(201);ids.push(c.data.id);if(i!==4)expect((await call('/api/candidates/'+c.data.id+'/stage','POST',{stage:'APTO_CAPACITACION'})).status).toBe(200);}
+  const day=new Date().toISOString().slice(0,10);
+  const created=await call('/api/trainings/from-selection','POST',{campaignId:cmp.data.id,candidateIds:[ids[0]],name:'Inyecciones',code:'INJECT-TEST',startDate:day,endDate:day,totalDays:3,modality:'PRESENCIAL',schedule:'09:00-15:00'});expect(created.status).toBe(201);
+  const group=created.data.id,path='/api/trainings/'+group+'/inject';
+  expect((await call(path,'POST',{candidateIds:[ids[1]]},recruiter)).status).toBe(403);
+  expect((await call(path,'POST',{candidateIds:[ids[1]]},other)).status).toBe(403);
+  expect((await call(path,'POST',{candidateIds:[ids[1],ids[4]]},analyst)).data.message).toBe('CANDIDATE_NOT_READY_FOR_TRAINING');
+  expect((await db.query('select count(*)::int n from talent.participants where group_id=$1',[group])).rows[0].n).toBe(1);
+  const added=await call(path,'POST',{candidateIds:[ids[1],ids[1]]},analyst);expect(added.status).toBe(201);expect(added.data.count).toBe(1);
+  const first=(await call('/api/bootstrap')).data.candidates.find((c:any)=>c.id===ids[1]);expect(first.training.status).toBe('PENDIENTE_INICIO');expect(first.training.injection.userId).toBe(analyst);expect(first.training.attendance).toEqual([]);
+  expect((await call(path,'POST',{candidateIds:[ids[1]]},analyst)).data.message).toBe('CANDIDATE_ALREADY_IN_TRAINING');
+  expect((await call('/api/trainings/'+group+'/trainer','POST',{trainerId:trainer})).status).toBe(200);
+  expect((await call('/api/trainings/'+group+'/theory/start','POST',{},trainer)).status).toBe(200);
+  const active=await call(path,'POST',{candidateIds:['uc.tenant.'+ids[2]]},analyst);expect(active.status).toBe(201);
+  const after=(await call('/api/bootstrap')).data;const person=after.candidates.find((c:any)=>c.id===ids[2]);expect(person.training.status).toBe('EN_CAPACITACION');expect(person.training.injection.userId).toBe(analyst);expect(after.cohorts.find((g:any)=>g.id===group).enrolledCount).toBe(3);
+  expect((await call('/api/trainings/'+group+'/participants/'+ids[2]+'/attendance','POST',{date:'2020-01-01',status:'FALTA',dayNumber:1},trainer)).data.message).toBe('ATTENDANCE_BEFORE_INJECTION');
+  const injectedRow=(await db.query('select p.id from talent.participants p join talent.applications a on a.company_id=p.company_id and a.id=p.application_id where p.group_id=$1 and a.person_id=$2',[group,ids[2]])).rows[0];
+  await expect(db.query("insert into talent.attendance(company_id,id,group_id,participant_id,day_date,status,marked_by) values('tenant','invalid-injection-attendance',$1,$2,'2020-01-01','FALTA',$3)",[group,injectedRow.id,trainer])).rejects.toThrow('ATTENDANCE_BEFORE_INJECTION');
+  expect(after.cohorts.find((g:any)=>g.id===group).managementHistory.some((e:any)=>e.action==='INYECCION')).toBe(true);
+  expect((await call('/api/trainings/'+group+'/theory/finish','POST',{grades:[ids[0],ids[1],ids[2]].map(candidateId=>({candidateId,score:18}))},trainer)).data.message).toBe('OFFER_SIGNATURES_PENDING');
+  await db.query("update talent.training_groups set status='CANCELADA' where id=$1",[group]);
+  expect((await call(path,'POST',{candidateIds:[ids[3]]},analyst)).data.message).toBe('TRAINING_INJECTION_CLOSED');
+ });
+
 });

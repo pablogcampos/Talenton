@@ -36,4 +36,12 @@ describe('historial y hora de asistencia',()=>{
   const html=renderToStaticMarkup(<AttendancePanel participants={[{id:'one',fullName:'Participante'}] as CandidateRecord[]} date="2026-11-02" setDate={()=>{}} onToday={()=>{}} windowInfo={info} loading={true} saving={false} onMark={()=>{}} onUnlock={()=>{}} onDecision={()=>{}} canDecide={false} openCandidate360={()=>{}}/>);
   expect(html).toContain('Ver asistencias pasadas');expect(html).toContain('09:00:00');expect(html).toMatch(/<select[^>]*disabled/);
  });
+ it('marca la inyección y bloquea fechas anteriores sin clasificarlas como faltas',()=>{
+  const person={id:'injected',fullName:'Persona',training:{injection:{date:'2026-11-05',at:'2026-11-05T14:00:00Z',userId:'a',userName:'Analista'},attendance:[]}} as unknown as CandidateRecord;
+  const before=renderToStaticMarkup(<AttendanceTable participants={[person]} date="2026-11-04" openCandidate360={()=>{}} onMark={()=>{}} disabled={false}/>);
+  expect(before).toContain('Inyección');expect(before).toContain('Analista');expect(before).toContain('Aún no incorporado');expect(before).toMatch(/<select[^>]*disabled/);
+  const current=renderToStaticMarkup(<AttendanceTable participants={[person]} date="2026-11-05" openCandidate360={()=>{}} onMark={()=>{}} disabled={false}/>);
+  expect(current).not.toMatch(/<select[^>]* disabled=""/);expect(current).toContain('Sin marcar');
+ });
+
 });

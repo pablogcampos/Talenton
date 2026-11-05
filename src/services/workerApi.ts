@@ -19,6 +19,8 @@ const WORKER_ERROR_MESSAGES: Record<string, string> = {
   OFFER_ALREADY_SIGNED: 'Ya existen firmas. La propuesta asignada se conserva sin modificaciones.',
   OFFER_REVOKED_VERSION: 'Esta versión fue reemplazada. Crea una nueva versión para asignarla.',
   OFFER_INVALID_SIGNATURE: 'Verifica tu documento, acepta las condiciones y dibuja tu firma completa.',
+  TRAINING_INJECTION_CLOSED: 'Solo puedes inyectar participantes antes de iniciar o durante la etapa teórica.',
+  ATTENDANCE_BEFORE_INJECTION: 'La fecha es anterior a la incorporación del participante.',
   OFFER_RATE_LIMITED: 'Se alcanzó el límite de intentos. Intenta nuevamente en 15 minutos.',
   OFFER_NOT_FOUND: 'La propuesta no está disponible o el enlace fue reemplazado.',
   OFFER_INVALID: 'Revisa los campos de la propuesta.',

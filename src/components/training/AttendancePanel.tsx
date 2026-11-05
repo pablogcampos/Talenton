@@ -1,3 +1,4 @@
+import {InjectionBadge} from './InjectionBadge';
 import React, {useEffect, useState} from 'react';
 import {History, Lock, TimerReset} from 'lucide-react';
 import type {AttendanceWindowInfo} from '../../context/TalentContext';
@@ -73,13 +74,14 @@ export function AttendanceTable({participants,date,openCandidate360,onMark,disab
    <caption className="sr-only">Asistencias del {attendanceDateLabel(date)}</caption>
    <thead className="bg-slate-50 text-slate-500"><tr>{['Participante','DNI','Asistencia','Observación',...(onMark?['Acción']:[])].map(t=><th key={t} scope="col" className="px-4 py-3">{t}</th>)}</tr></thead>
    <tbody className="divide-y divide-slate-100">{participants.map(candidate=>{
+    const beforeInjection=Boolean(candidate.training?.injection&&date<candidate.training.injection.date);
     const record=candidate.training?.attendance?.find(a=>a.date===date);const status=record?.status||'';
     return <tr key={candidate.id}>
-     <td className="px-4 py-3"><button className="font-semibold text-[#0B2847]" onClick={()=>openCandidate360(candidate.id)}>{candidate.fullName||'Candidato'}</button></td>
+     <td className="px-4 py-3"><button className="font-semibold text-[#0B2847]" onClick={()=>openCandidate360(candidate.id)}>{candidate.fullName||'Candidato'}</button><InjectionBadge candidate={candidate}/></td>
      <td className="px-4 py-3 text-slate-500">{candidate.dni||'—'}</td>
-     <td className="px-4 py-3">{labels[status]||status||'Sin marcar'}</td>
+     <td className="px-4 py-3">{beforeInjection?'Aún no incorporado':labels[status]||status||'Sin marcar'}</td>
      <td className="whitespace-pre-wrap break-words px-4 py-3 text-slate-500">{record?.notes||'—'}</td>
-     {onMark&&<td className="px-4 py-3"><select aria-label={'Asistencia de '+candidate.fullName} disabled={disabled} value={status} onChange={e=>onMark(candidate.id,e.target.value as AttendanceStatus)} className="rounded-lg border border-slate-200 p-2 disabled:bg-slate-50"><option value="" disabled>Seleccionar</option>{['PRESENTE','TARDANZA','FALTA','JUSTIFICADO'].map(s=><option key={s} value={s}>{labels[s]}</option>)}</select></td>}
+     {onMark&&<td className="px-4 py-3"><select aria-label={'Asistencia de '+candidate.fullName} disabled={disabled||beforeInjection} value={status} onChange={e=>onMark(candidate.id,e.target.value as AttendanceStatus)} className="rounded-lg border border-slate-200 p-2 disabled:bg-slate-50"><option value="" disabled>Seleccionar</option>{['PRESENTE','TARDANZA','FALTA','JUSTIFICADO'].map(s=><option key={s} value={s}>{labels[s]}</option>)}</select></td>}
     </tr>;
    })}</tbody>
   </table>

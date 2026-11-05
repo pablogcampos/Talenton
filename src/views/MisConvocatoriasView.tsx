@@ -1,3 +1,4 @@
+import {InjectParticipantsModal} from '../components/training/InjectParticipantsModal';
 import React, { useState } from 'react';
 import { getWorkerErrorMessage } from '../services/workerApi';
 import { IdentityAvatar } from '../components/common/IdentityAvatar';
@@ -95,6 +96,7 @@ export const MisConvocatoriasView: React.FC = () => {
 
   // Modals
   const [isCandidateCreateOpen, setIsCandidateCreateOpen] = useState(false);
+  const [injectOpen,setInjectOpen]=useState(false);
   const [isCreateCohortModalOpen, setIsCreateCohortModalOpen] = useState(false);
   const [candidateToDiscard, setCandidateToDiscard] = useState<CandidateRecord | null>(null);
   const [isSourcesModalOpen, setIsSourcesModalOpen] = useState(false);
@@ -468,6 +470,7 @@ export const MisConvocatoriasView: React.FC = () => {
               <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 [&::-webkit-details-marker]:hidden" title="Más acciones"><MoreVertical className="h-4 w-4" /></summary>
               <div className="absolute right-0 top-10 z-30 w-52 rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg">
                 <button type="button" onClick={() => setIsCreateCohortModalOpen(true)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50" title="Crear grupo de capacitación con los postulantes aptos"><GraduationCap className="h-3.5 w-3.5" />Crear capacitación{aptosCount > 0 && <span className="ml-auto rounded-full bg-slate-100 px-1.5 text-2xs">{aptosCount}</span>}</button>
+                {['ADMIN','JEFE_SELECCION','ANALISTA_SELECCION'].includes(currentUser.role)&&<button type="button" onClick={()=>setInjectOpen(true)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50"><Users className="h-3.5 w-3.5"/>Inyectar a capacitación existente</button>}
               </div>
             </details>
           </div>
@@ -1080,6 +1083,7 @@ export const MisConvocatoriasView: React.FC = () => {
         </div>
       )}
 
+      {injectOpen&&activeCampaign&&<InjectParticipantsModal campaign={activeCampaign} onClose={()=>setInjectOpen(false)}/>}
       {/* Create Training Cohort Modal */}
       {isCreateCohortModalOpen && (
         <CreateTrainingCohortModal
