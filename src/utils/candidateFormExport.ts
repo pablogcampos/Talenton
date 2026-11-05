@@ -1,3 +1,4 @@
+import { formatCaptureTime } from './captureTime';
 import type { CandidateRecord } from '../types';
 import type { CaptureEvent } from '../services/captureApi';
 import { companyText, optionLabel, optionValue, techCenterSections } from '../../shared/techCenterForm';
@@ -82,6 +83,23 @@ export function buildCandidateFormSheets(candidates: CandidateRecord[], events: 
       if (applicantFields.includes(id) || id === 'formSubmission' || id === 'techCenterAnswers') continue;
       addAnswer('Datos generales adicionales', '', id, id, '', '', value);
     }
+  }
+  // Preserve each submission independently; the summary identifies the latest response.
+  const latestByCandidate = new Map<string, CaptureEvent>();
+  for (const event of events) {
+    if (!Number.isFinite(Date.parse(event.createdAt))) continue;
+    const previous = latestByCandidate.get(event.candidateId);
+    if (!previous || Date.parse(event.createdAt) > Date.parse(previous.createdAt)) latestByCandidate.set(event.candidateId, event);
+  }
+  candidatesSheet.headers.push('Última respuesta del formulario (hora de Perú)');
+  for (const row of candidatesSheet.rows) {
+    const event = latestByCandidate.get(String(row[1]));
+    row.push(event ? formatCaptureTime(event.createdAt) : 'Sin respuesta de formulario registrada');
+  }
+  for (const sheet of [capturesSheet, answersSheet]) {
+    sheet.headers[3] = 'Fecha de envío original (UTC)';
+    sheet.headers.push('Respuesta del formulario (hora de Perú)');
+    for (const row of sheet.rows) row.push(formatCaptureTime(String(row[3] || '')));
   }
   return [candidatesSheet, capturesSheet, answersSheet, attachmentsSheet];
 }

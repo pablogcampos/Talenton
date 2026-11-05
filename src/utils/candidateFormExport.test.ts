@@ -23,6 +23,21 @@ const oldEvent = {
 } as CaptureEvent;
 
 describe('exportación completa de formularios', () => {
+  it('muestra hora peruana, conserva cada envío y resume el último sin inventar fechas', () => {
+    const latest = {...formEvent, id: 'latest', createdAt: '2026-11-06T02:15:30Z'};
+    const noForm = {...candidate, id: 'without-form', applicationDate: '2026-11-06'};
+    const [people, captures, answers] = buildCandidateFormSheets([candidate, noForm], [latest, formEvent, oldEvent]);
+    expect(people.rows[0].at(-1)).toContain('05/11/2026');
+    expect(people.rows[0].at(-1)).toContain('21:15:30');
+    expect(people.rows[1].at(-1)).toBe('Sin respuesta de formulario registrada');
+    expect(people.rows[2].at(-1)).toContain('07:00:00');
+    expect(captures.rows[0][3]).toBe(latest.createdAt);
+    expect(captures.rows[0].at(-1)).toContain('21:15:30');
+    expect(captures.rows[1].at(-1)).toContain('07:00:00');
+    expect(answers.rows.filter(row=>row[2]==='latest').every(row=>String(row.at(-1)).includes('21:15:30'))).toBe(true);
+    const files=unzipSync(createXlsx([people,captures,answers]));
+    expect(strFromU8(files['xl/worksheets/sheet1.xml'])).toContain('21:15:30');
+  });
   it('incluye formularios personalizados, anteriores, preguntas vacías, extras y adjuntos', () => {
     const [people, captures, answers, attachments] = buildCandidateFormSheets([candidate], [formEvent, oldEvent]);
     expect(people.rows).toHaveLength(2);
