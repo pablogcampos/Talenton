@@ -965,11 +965,16 @@ describe('Transición relacional PostgreSQL 17',()=>{
   const day=new Date().toISOString().slice(0,10);
   const created=await call('/api/trainings/from-selection','POST',{campaignId:cmp.data.id,candidateIds:[ids[0]],name:'Inyecciones',code:'INJECT-TEST',startDate:day,endDate:day,totalDays:3,modality:'PRESENCIAL',schedule:'09:00-15:00'});expect(created.status).toBe(201);
   const group=created.data.id,path='/api/trainings/'+group+'/inject';
+  const available=await call(path,'GET',undefined,analyst);expect(available.status).toBe(200);expect(available.data.candidateIds.sort()).toEqual([ids[1],ids[2],ids[3]].sort());
+  expect((await call(path,'GET',undefined,recruiter)).status).toBe(403);
+  expect((await call(path,'GET',undefined,other)).status).toBe(403);
+
   expect((await call(path,'POST',{candidateIds:[ids[1]]},recruiter)).status).toBe(403);
   expect((await call(path,'POST',{candidateIds:[ids[1]]},other)).status).toBe(403);
   expect((await call(path,'POST',{candidateIds:[ids[1],ids[4]]},analyst)).data.message).toBe('CANDIDATE_NOT_READY_FOR_TRAINING');
   expect((await db.query('select count(*)::int n from talent.participants where group_id=$1',[group])).rows[0].n).toBe(1);
   const added=await call(path,'POST',{candidateIds:[ids[1],ids[1]]},analyst);expect(added.status).toBe(201);expect(added.data.count).toBe(1);
+  expect((await call(path,'GET',undefined,analyst)).data.candidateIds).not.toContain(ids[1]);
   const first=(await call('/api/bootstrap')).data.candidates.find((c:any)=>c.id===ids[1]);expect(first.training.status).toBe('PENDIENTE_INICIO');expect(first.training.injection.userId).toBe(analyst);expect(first.training.attendance).toEqual([]);
   expect((await call(path,'POST',{candidateIds:[ids[1]]},analyst)).data.message).toBe('CANDIDATE_ALREADY_IN_TRAINING');
   expect((await call('/api/trainings/'+group+'/trainer','POST',{trainerId:trainer})).status).toBe(200);

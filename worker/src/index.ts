@@ -393,6 +393,11 @@ async function injectTrainingParticipants(request:Request,env:Env,actor:Profile,
  const campaignId=String(training.campaignId||'');
  if(training.companyId!==actor.companyId||!campaignAllowed(actor,await campaign(env,campaignId)))throw new Error('FORBIDDEN');
  if(!['PENDIENTE_ASIGNACION','PROGRAMADA','EN_CAPACITACION'].includes(String(training.status)))throw new Error('TRAINING_INJECTION_CLOSED');
+ if(request.method==='GET'){
+  const people=await listFirestore(env,'candidates');
+  const candidateIds=people.filter(person=>person.companyId===actor.companyId&&person.campaignId===campaignId&&candidateAllowed(actor,person)&&!person.trainingId&&!(isRecord(person.training)&&person.training.cohortId)&&!strings(training.participantIds).includes(String(person.id))&&isRecord(person.selection)&&person.selection.stage==='APTO_CAPACITACION'&&person.selectionActive!==false).map(person=>String(person.id));
+  return response({candidateIds},200,cors(request,env));
+ }
  const referenced=new Set<string>();
  const input=unqualifyCandidates(await request.json<Record<string,unknown>>(),referenced) as {candidateIds?:unknown};
  if([...referenced].some(company=>company!==actor.companyId))throw new Error('FORBIDDEN');
@@ -1228,7 +1233,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     if (request.method === 'POST' && attendanceUnlockMatch) return await requestAttendanceUnlock(request, env, actor, decodeURIComponent(attendanceUnlockMatch[1]), attendanceUnlockMatch[2]);
     if (request.method === 'PATCH' && attendanceUnlockMatch) return await decideAttendanceUnlock(request, env, actor, decodeURIComponent(attendanceUnlockMatch[1]), attendanceUnlockMatch[2]);
     const injectionMatch=url.pathname.match(/^\/api\/trainings\/([^/]+)\/inject$/);
-    if(injectionMatch&&request.method==='POST')return await injectTrainingParticipants(request,env,actor,decodeURIComponent(injectionMatch[1]));
+    if(injectionMatch&&['GET','POST'].includes(request.method))return await injectTrainingParticipants(request,env,actor,decodeURIComponent(injectionMatch[1]));
     const participantMatch = url.pathname.match(/^\/api\/trainings\/([^/]+)\/participants\/([^/]+)\/(attendance|evaluations|status)$/);
     if (request.method === 'POST' && participantMatch) {
       const action = participantMatch[3];
