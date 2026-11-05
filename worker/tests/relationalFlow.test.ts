@@ -289,6 +289,16 @@ describe('Transición relacional PostgreSQL 17',()=>{
   const linked=await call('/api/selection/link','POST',{eventId:event.id,campaignId,templateId:template.data.id});expect(linked.status).toBe(201);
   const history=await call('/api/selection/candidates/'+event.candidateId);expect(history.data.applications).toHaveLength(1);
  });
+ it('conserva la marca temporal original de respuesta al gestionar la captación',async()=>{
+  const event=(await call('/api/capture/management')).data.events[0];
+  const instant='2026-11-06T02:15:30.000Z';
+  await db.query('update talent.captures set received_at=$1 where id=$2',[instant,event.id]);
+  const inbox=await call('/api/capture/inbox');
+  expect(new Date(inbox.data.items.find((item:any)=>item.id===event.id).createdAt).toISOString()).toBe(instant);
+  expect((await call('/api/capture/events/'+event.id,'PATCH',{status:'Contactado',note:'Validación temporal'})).status).toBe(200);
+  const after=(await call('/api/capture/inbox')).data.items.find((item:any)=>item.id===event.id);
+  expect(new Date(after.createdAt).toISOString()).toBe(instant);
+ });
  it('configuración de captación: actualización versionada, validación SQL y acceso solo desde servidor',async()=>{
   env.ORG_ENABLED='true';
   try {

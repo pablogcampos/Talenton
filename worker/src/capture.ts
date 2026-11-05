@@ -306,7 +306,8 @@ export async function handleCapture(request: Request, env: Env, actor: Actor | u
     }); return reply({ ok: true });
   }
   if (path === '/api/capture/inbox' && request.method === 'GET') {
-    const events = (await store.query('captations', filter)).filter(x => actor.role === 'ADMIN' || x.companyId === actor.companyId);
+    const events = (await store.queryAll('captations', filter)).filter(x => actor.role === 'ADMIN' || x.companyId === actor.companyId);
+    events.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
     return reply({ items: events.slice(0, 200).map(({ possibleIds, ...e }) => actor.role === 'ADMIN' ? { ...e, possibleIds } : e), truncated: events.length > 200 });
   }
   const eventPath = path.match(/^\/api\/capture\/events\/([a-f0-9-]{36})$/);

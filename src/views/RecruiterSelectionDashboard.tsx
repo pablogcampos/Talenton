@@ -1,3 +1,4 @@
+import { RecruiterCaptureResponses } from '../components/capture/RecruiterCaptureResponses';
 import React, { useMemo, useState } from 'react';
 import { Activity, Award, CalendarDays, CheckCircle2, Clock3, Filter, PhoneCall, Star, Target, TrendingUp, Users } from 'lucide-react';
 import { CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -74,6 +75,7 @@ export const RecruiterSelectionDashboard: React.FC = () => {
       <label className="flex h-14 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 text-xs shadow-sm"><Filter className="h-4 w-4 text-slate-600" /><span className="text-slate-500">Mis convocatorias</span><select value={campaignId} onChange={event => setCampaignId(event.target.value)} className="min-w-0 flex-1 bg-transparent font-semibold text-slate-800 outline-none"><option value="ALL">Todas ({myAssignedCampaigns.length})</option>{myAssignedCampaigns.map(campaign => <option key={campaign.id} value={campaign.id}>{campaign.title}</option>)}</select></label>
     </section>
 
+    <RecruiterCaptureResponses />
     <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
       <Kpi label="% Cobertura" value={`${coverage}%`} detail={`${hired} de ${coverageBase} posiciones propias`} icon={Target} tone="bg-emerald-50 text-emerald-600" />
       <Kpi label="Time to Fill" value={`${timeToFill} días`} detail={`${filteredCampaigns.length} convocatorias`} icon={Clock3} tone="bg-sky-50 text-sky-600" />
