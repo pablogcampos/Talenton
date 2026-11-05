@@ -1,6 +1,6 @@
 import type { Env } from './index';
 import { Store, body, CaptureError, type Data, type Helpers } from './capture';
-type Actor = { uid: string; displayName?: string; role: string; companyId: string; allowedModules: string[]; scope?: string[] };
+type Actor = { uid: string; displayName?: string; role: string; companyId: string; allowedModules: string[]; scope?: string[]; subordinateUserIds?: string[] };
 export const processStages = ['NUEVO', 'CONTACTADO', 'ENTREVISTA', 'VERIFICACION_TECNICA', 'EVALUACIONES', 'APTO_CAPACITACION'];
 const terminal = ['NO_APTO', 'DESCARTADO', 'APTO_CAPACITACION'];
 const terminalCampaign = ['CERRADO', 'ANULADO', 'EN_PAUSA'];
@@ -97,10 +97,10 @@ export async function handleSelectionAdvanced(request: Request, env: Env, actor:
     }
   }
   if (parts[2] === 'link' && request.method === 'POST') {
-    assert(['ADMIN', 'RECLUTADOR'].includes(actor.role), 'FORBIDDEN', 403); const input = await body(request); assert(safeId(input.eventId) && safeId(input.campaignId), 'INVALID_LINK');
+    assert(['ADMIN', 'RECLUTADOR', 'ANALISTA_SELECCION'].includes(actor.role), 'FORBIDDEN', 403); const input = await body(request); assert(safeId(input.eventId) && safeId(input.campaignId), 'INVALID_LINK');
     const result = await store.atomic(async tx => {
       const event = await store.get(`captations/${input.eventId}`, tx); assert(event && !event.conflict, 'CAPTURE_REVIEW_REQUIRED', 409);
-      assert(actor.role === 'ADMIN' || (event!.ownerUid === actor.uid && event!.companyId === actor.companyId), 'FORBIDDEN', 403);
+      assert(actor.role === 'ADMIN' || (event!.companyId === actor.companyId && (event!.ownerUid === actor.uid || (actor.role === 'ANALISTA_SELECCION' && actor.subordinateUserIds?.includes(event!.ownerUid)))), 'FORBIDDEN', 403);
       const campaign = await getCampaign(input.campaignId, tx); assert(!terminalCampaign.includes(campaign.status), 'CAMPAIGN_NOT_ACTIVE', 409);
       const c = await store.get(`candidates/${event!.candidateId}`, tx); assert(c && c.companyId === campaign.companyId, 'FORBIDDEN', 403);
       const id = await applicationId(c!.id, campaign.id), existing = await store.get(`selectionApplications/${id}`, tx);

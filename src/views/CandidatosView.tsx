@@ -1,3 +1,4 @@
+import { CaptureLinkToCampaign } from '../components/candidates/CaptureLinkToCampaign';
 import React, { useState } from 'react';
 import { 
   Users, 
@@ -185,7 +186,7 @@ export const CandidatosView: React.FC = () => {
 
                       {/* Convocatoria */}
                       <td className="max-w-[190px] px-3 py-3">
-                        <div className="text-2xs font-bold text-sky-700">{cand.captureOnly ? 'Captación' : cand.campaignCode || campaign?.code || 'Sin código'}</div><div className="mt-0.5 truncate font-semibold text-slate-900" title={cand.campaignName}>{cand.captureOnly ? 'Pendiente de vincular' : cand.campaignName || campaign?.title || 'Sin convocatoria'}</div><div className="mt-0.5 truncate text-2xs text-slate-500">{campaign?.company || campaign?.client || 'Sin empresa'} · {campaign?.location || 'Sin sede'}</div>
+                        <div className="text-2xs font-bold text-sky-700">{cand.captureOnly ? 'Captación' : cand.campaignCode || campaign?.code || 'Sin código'}</div><div className="mt-0.5 truncate font-semibold text-slate-900" title={cand.campaignName}>{cand.captureOnly ? 'Pendiente de vincular' : cand.campaignName || campaign?.title || 'Sin convocatoria'}</div><div className="mt-0.5 truncate text-2xs text-slate-500">{campaign?.company || campaign?.client || currentUser.companies?.find(company=>company.id===cand.companyId)?.name || cand.companyId || 'Sin empresa'} · {campaign?.location || 'Sin sede'}</div>
                       </td>
 
                       {/* Selector */}
@@ -212,7 +213,7 @@ export const CandidatosView: React.FC = () => {
 
                       {/* Action: Open 360 */}
                       <td className="py-3 px-3 text-right">
-                        <div className="flex justify-end gap-1.5"><button type="button" onClick={() => openCandidate360(cand.id)} className="flex items-center gap-1 rounded-lg border border-sky-200 bg-white px-2.5 py-1.5 text-2xs font-semibold text-sky-800 hover:bg-sky-50">Ficha 360°<ChevronRight className="h-3 w-3" /></button><button type="button" className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50" title="Más acciones"><MoreVertical className="h-3.5 w-3.5" /></button></div>
+                        <div className="flex flex-wrap justify-end gap-1.5">{cand.captureOnly && ['ADMIN','RECLUTADOR','ANALISTA_SELECCION'].includes(currentUser.role) && <CaptureLinkToCampaign candidateId={cand.id} companyId={cand.companyId} />}<button type="button" onClick={() => openCandidate360(cand.id)} className="flex items-center gap-1 rounded-lg border border-sky-200 bg-white px-2.5 py-1.5 text-2xs font-semibold text-sky-800 hover:bg-sky-50">Ficha 360°<ChevronRight className="h-3 w-3" /></button><button type="button" className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50" title="Más acciones"><MoreVertical className="h-3.5 w-3.5" /></button></div>
                       </td>
 
                     </tr>

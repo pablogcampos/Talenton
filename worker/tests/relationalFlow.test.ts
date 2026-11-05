@@ -1019,4 +1019,29 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect((await call('/api/trainings/'+active+'/trainer','POST',{trainerId:t2})).status).toBe(200);
  });
 
+ it('vinculación manual para reclutador y analista: conserva origen y restringe equipo y convocatoria',async()=>{
+  env.ORG_ENABLED='false';
+  const recruiter='40000000-0000-4000-8000-000000000004',analyst='40000000-0000-4000-8000-000000000005',outsider='40000000-0000-4000-8000-000000000006';
+  await db.query("update talent.profiles set role='ANALISTA_SELECCION' where id=$1",[analyst]);
+  const cmp=await call('/api/campaigns','POST',{code:'MANUAL-LINK',title:'Vinculación manual',vacancies:5,status:'EN_PROCESO',assignedAnalystId:analyst,responsibles:[{userId:recruiter,target:5}]});expect(cmp.status).toBe(201);
+  await db.query("insert into talent.supervision(company_id,supervisor_id,subordinate_id) values('tenant',$1,$2) on conflict(company_id,supervisor_id,subordinate_id) do update set archived_at=null",[analyst,recruiter]);
+  const source=(await db.query("select id from talent.recruitment_sources where company_id='tenant' limit 1")).rows[0].id;
+  for(const [index,actor]of [recruiter,analyst].entries()){
+   const person='manual-person-'+index,event=crypto.randomUUID();
+   await db.query("insert into talent.persons(company_id,id,full_name,capture_only,owner_id,document_number) values('tenant',$1,'Persona captada',true,$2,$3)",[person,recruiter,'9911100'+index]);
+   await db.query("insert into talent.captures(company_id,id,person_id,owner_id,source_id,status,received_at) values('tenant',$1,$2,$3,$4,'Nuevo','2026-11-01T12:00:00Z')",[event,person,recruiter,source]);
+   const body={eventId:event,campaignId:cmp.data.id,templateId:''};
+   expect((await call('/api/selection/link','POST',body,outsider)).status).toBe(403);
+   if(actor===analyst){
+    await db.query('update talent.supervision set archived_at=now() where supervisor_id=$1 and subordinate_id=$2',[analyst,recruiter]);
+    expect((await call('/api/selection/link','POST',body,actor)).status).toBe(403);
+    await db.query('update talent.supervision set archived_at=null where supervisor_id=$1 and subordinate_id=$2',[analyst,recruiter]);
+   }
+   expect((await call('/api/selection/link','POST',body,actor)).status).toBe(201);
+   const saved=(await call('/api/bootstrap')).data.candidates.find((c:any)=>c.id===person);
+   expect(saved.captureOnly).toBe(false);expect(saved.campaignId).toBe(cmp.data.id);expect(saved.recruiterId).toBe(recruiter);
+   expect((await db.query('select received_at from talent.captures where id=$1',[event])).rows).toHaveLength(1);
+  }
+ });
+
 });
