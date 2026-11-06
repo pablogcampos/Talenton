@@ -18,7 +18,7 @@ export async function unifiedRequest(request:Request,env:Env,dispatch:Dispatch):
  url.pathname=url.pathname.split('/').map(part=>{const parsed=readCandidateKey(decodeURIComponent(part));if(!parsed)return part;requestedCompanies.add(parsed.company);return encodeURIComponent(parsed.id);}).join('/');
  const context=(company:string)=>rpc(env,'talent_org_context',{p_actor:actor.authUserId,p_company:company}) as Promise<SessionProfile>;
  const run=(ctx:SessionProfile)=>{const h=new Headers(headers);h.set('X-Talent-Company',ctx.companyId);return dispatch(new Request(url,{method:request.method,headers:h,...(!['GET','HEAD'].includes(request.method)?{body:rewrittenBody??request.clone().body,duplex:'half'}:{})} as RequestInit),{...env,VERIFIED_SESSION:ctx});};
- if(request.method==='GET'&&['/api/session','/api/bootstrap','/api/capture/management','/api/capture/links','/api/capture/inbox','/api/capture/export'].includes(path)){
+ if(request.method==='GET'&&['/api/session','/api/bootstrap','/api/attendance-unlocks','/api/capture/management','/api/capture/links','/api/capture/inbox','/api/capture/export'].includes(path)){
   const contexts:SessionProfile[]=[];
   for(const c of actor.companies||[{id:actor.companyId}])contexts.push(await context(c.id));
   if(path==='/api/session')return Response.json({...actor,unified:true,scope:[...new Set(contexts.flatMap(c=>c.scope||[]))],companyCampaigns:[...new Set(contexts.flatMap(c=>c.companyCampaigns||[]))],allowedModules:[...new Set(contexts.flatMap(c=>c.allowedModules))]});

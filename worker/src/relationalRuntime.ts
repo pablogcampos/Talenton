@@ -165,7 +165,7 @@ export class RelationalRuntime {
   if(child==='participants')paths=this.relate('participants','group_id',parent).map(p=>collection+'/'+this.personForApp(p.application_id));
   else if(child==='documents')paths=this.relate('person_documents','person_id',parent).map(d=>collection+'/'+d.id);
   else {
-   const tables:D={users:'profiles',campaigns:'campaigns',candidates:'persons',trainings:'training_groups',captureLinks:'capture_links',captations:'captures',selectionApplications:'applications',selectionTemplates:'process_templates',selectionMessages:'message_templates'};
+   const tables:D={users:'profiles',campaigns:'campaigns',candidates:'persons',trainings:'training_groups',captureLinks:'capture_links',captations:'captures',attendanceUnlockRequests:'attendance_unlocks',selectionApplications:'applications',selectionTemplates:'process_templates',selectionMessages:'message_templates'};
    paths=this.rows(tables[root]||root).filter(r=>r.archived_at==null).map(r=>root+'/'+r.id);
   }
   paths=Array.from(new Set([...paths,...Array.from(this.documents.keys()).filter(p=>p.split('/').slice(0,-1).join('/')===collection)]));

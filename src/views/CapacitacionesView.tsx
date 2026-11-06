@@ -1,3 +1,4 @@
+import { AttendanceUnlockInbox } from '../components/training/AttendanceUnlockInbox';
 import {workerApi,getWorkerErrorMessage} from '../services/workerApi';
 import { OffersPanel } from './LaborOffersView';
 import { TrainingPreparation } from '../components/training/TrainingPreparation';
@@ -182,6 +183,7 @@ export const CapacitacionesView: React.FC<CapacitacionesViewProps> = ({ onOpenNe
 
   return (
     <div className="space-y-4 bg-[#F3F6F8] pb-8">
+      <AttendanceUnlockInbox />
       <section className="flex flex-col gap-4 px-1 py-1 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-950">Capacitaciones Iniciales</h1>

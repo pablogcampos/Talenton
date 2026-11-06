@@ -532,7 +532,7 @@ async function requestAttendanceUnlock(request: Request, env: Env, actor: Profil
   const training = await requireTrainingAccess(env, actor, trainingId);
   if (actor.role !== 'FORMADOR' || training.trainerId !== actor.uid) throw new Error('FORBIDDEN');
   const input = await request.json<Record<string, unknown>>(); const reason = String(input.reason ?? '').trim();
-  if (reason.length < 5) throw new Error('ATTENDANCE_UNLOCK_REASON_REQUIRED');
+  if (reason.length < 5 || reason.length > 1000) throw new Error('ATTENDANCE_UNLOCK_REASON_REQUIRED');
   const window = await attendanceWindow(env, trainingId, date);
   if (window.state === 'OPEN' || window.state === 'UPCOMING') throw new Error('ATTENDANCE_WINDOW_NOT_LOCKED');
   const now = new Date().toISOString(); const id = attendanceUnlockId(trainingId, date);
@@ -1229,6 +1229,15 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     if (request.method === 'PATCH' && trainingManagementMatch) return await updateTrainingManagement(request, env, actor, decodeURIComponent(trainingManagementMatch[1]));
     const attendanceWindowMatch = url.pathname.match(/^\/api\/trainings\/([^/]+)\/attendance-window$/);
     if (request.method === 'GET' && attendanceWindowMatch) return await attendanceWindowResponse(request, env, actor, decodeURIComponent(attendanceWindowMatch[1]), url.searchParams.get('date') ?? '');
+    if(url.pathname==='/api/attendance-unlocks'&&request.method==='GET'){
+      if(!['ADMIN','JEFE_FORMACION','COORDINADOR_FORMACION'].includes(actor.role)||!actor.allowedModules.includes('FORMACION'))throw new Error('FORBIDDEN');
+      const requests=await listFirestore(env,'attendanceUnlockRequests');const items:Record<string,unknown>[]=[];
+      for(const item of requests.filter(r=>r.status==='PENDIENTE')){
+        try{const group=await requireTrainingManagerAccess(env,actor,String(item.trainingId));items.push({...item,trainingName:group.name,trainingCode:group.code,trainerName:group.trainerName});}
+        catch(error){if(error instanceof Error&&['FORBIDDEN','TRAINING_ADMIN_NOT_FOUND','FIRESTORE_404'].includes(error.message))continue;throw error;}
+      }
+      return response({items:items.sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt)))},200,cors(request,env));
+    }
     const attendanceUnlockMatch = url.pathname.match(/^\/api\/trainings\/([^/]+)\/attendance-unlocks\/(\d{4}-\d{2}-\d{2})$/);
     if (request.method === 'POST' && attendanceUnlockMatch) return await requestAttendanceUnlock(request, env, actor, decodeURIComponent(attendanceUnlockMatch[1]), attendanceUnlockMatch[2]);
     if (request.method === 'PATCH' && attendanceUnlockMatch) return await decideAttendanceUnlock(request, env, actor, decodeURIComponent(attendanceUnlockMatch[1]), attendanceUnlockMatch[2]);
