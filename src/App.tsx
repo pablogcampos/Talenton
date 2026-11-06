@@ -7,6 +7,8 @@ import { SupabaseAccessGate } from './components/auth/SupabaseAccessGate';
 import { ActiveNavModule, UserProfile } from './types';
 import { SelectionRqAlert } from './components/selection/SelectionRqAlert';
 
+import { VoicebotNotifications } from './components/selection/VoicebotNotifications';
+const VoicebotView = lazy(() => import('./views/VoicebotView').then(m => ({ default: m.VoicebotView })));
 const LaborOffersView = lazy(() => import('./views/LaborOffersView').then(m => ({ default: m.LaborOffersView })));
 const PublicOfferView = lazy(() => import('./views/PublicOfferView').then(m => ({ default: m.PublicOfferView })));
 const Candidate360Modal = lazy(() => import('./components/candidates/Candidate360Modal').then(module => ({ default: module.Candidate360Modal })));
@@ -37,6 +39,7 @@ const CreateTrainingCohortModal = lazy(() => import('./components/modals/CreateT
 
 const rolesForView: Partial<Record<ActiveNavModule, UserProfile['role'][]>> = {
   OPERACIONES_ADMIN: ['ADMIN', 'JEFE_OPERACIONES', 'COORDINADOR_OPERACIONES'],
+  SELECCION_VOICEBOT: ['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION', 'RECLUTADOR'],
   SELECCION_PROPUESTAS: ['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION', 'RECLUTADOR'],
   SELECCION_RQ: ['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION'],
   SELECCION_CAPTACION: ['ADMIN', 'RECLUTADOR', 'ANALISTA_SELECCION'],
@@ -109,12 +112,14 @@ const MainLayout: React.FC = () => {
           onOpenNewCohortModal={() => setIsCohortModalOpen(true)}
         />
 
+        <VoicebotNotifications />
         {/* Scrollable View Container */}
         <main className="talent-content flex-1 overflow-y-auto custom-scrollbar">
           {connectionError && <div role="alert" className="m-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{connectionError}<button className="ml-4 underline" onClick={()=>window.dispatchEvent(new Event('talent:data-changed'))}>Reintentar</button></div>}
           <Suspense fallback={<div className="py-12 text-center text-slate-500">Cargando módulo…</div>}>
           <div className="talent-view w-full space-y-6">
             {(activeModule === 'INICIO' || activeModule === 'SELECCION_DASHBOARD') && <SelectionRqAlert />}
+            {activeModule === 'SELECCION_VOICEBOT' && <VoicebotView />}
             {activeModule === 'SELECCION_PROPUESTAS' && <LaborOffersView />}
             {activeModule === 'SELECCION_RQ' && <SelectionRqView />}
             {activeModule === 'OPERACIONES_ADMIN' && <OperationsAdminView />}

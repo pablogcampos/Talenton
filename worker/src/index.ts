@@ -1,3 +1,4 @@
+import {handleVoicebot} from './voicebot';
 import { limaDay, trainingDayNumber, unlockIsActive, evaluationDefinition, validEvaluationDefinition, trainingEvaluationsApproved } from '../../shared/trainingRules';
 import { handleCapture, CaptureError } from './capture';
 import { candidatePreferences } from './candidatePreferences';
@@ -1348,6 +1349,12 @@ const worker={async fetch(request:Request,env:Env):Promise<Response>{
    }catch(e){return response({message:e instanceof SupabaseError?e.code:'TRAINING_ADMIN_INVALID'},e instanceof SupabaseError?e.status:400,cors(request,env));}
   }
 
+  if(request.method!=='OPTIONS' && path.startsWith('/api/voicebot/')){
+   try{
+    if(!originAllowed(request,env))throw new SupabaseError(403,'ORIGIN_NOT_ALLOWED');
+    return response(await handleVoicebot(request,env),200,{...cors(request,env),'Cache-Control':'no-store'});
+   }catch(e){return response({message:e instanceof SupabaseError?e.code:'VOICEBOT_FAILED'},e instanceof SupabaseError?e.status:500,{...cors(request,env),'Cache-Control':'no-store'});}
+  }
   if(request.method!=='OPTIONS' && (path==='/api/offers'||path.startsWith('/api/offers/')||path.startsWith('/api/public/offers/'))){
     try{
       if(!originAllowed(request,env))throw new SupabaseError(403,'ORIGIN_NOT_ALLOWED');

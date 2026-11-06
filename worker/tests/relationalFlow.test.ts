@@ -65,7 +65,7 @@ describe('Transición relacional PostgreSQL 17',()=>{
     else if(fn==='talent_session_profile')result=await db.query('select public.talent_session_profile($1::uuid) as result',[body.p_auth]);
     else if(fn==='talent_runtime_snapshot')result=await db.query('select public.talent_runtime_snapshot($1::uuid,$2) as result',[body.p_actor,body.p_public_hash]);
     else if(fn==='talent_runtime_commit'){if(failNextCaptureCommit){failNextCaptureCommit=false;throw new Error('SIMULATED_COMMIT_FAILURE');}result=await db.query('select public.talent_runtime_commit($1::uuid,$2,$3,$4,$5::jsonb,$6::text[]) as result',[body.p_actor,body.p_public_hash,body.p_company,body.p_revision,JSON.stringify(body.p_rows),body.p_resets||[]]);}
-    else if(fn?.startsWith('talent_training_')||fn?.startsWith('talent_offer_')||fn?.startsWith('talent_org_')||fn?.startsWith('talent_survey_')||fn?.startsWith('talent_unlock_')){const keys=Object.keys(body);result=await db.query('select public.'+fn+'('+keys.map((k,i)=>k+'=> $'+(i+1)).join(',')+') as result',keys.map(k=>['p_rows','p_grants'].includes(k)?JSON.stringify(body[k]):Array.isArray(body[k])?'{'+body[k].join(',')+'}':body[k]&&typeof body[k]==='object'?JSON.stringify(body[k]):body[k]));}
+    else if(fn?.startsWith('talent_voicebot_')||fn?.startsWith('talent_training_')||fn?.startsWith('talent_offer_')||fn?.startsWith('talent_org_')||fn?.startsWith('talent_survey_')||fn?.startsWith('talent_unlock_')){const keys=Object.keys(body);result=await db.query('select public.'+fn+'('+keys.map((k,i)=>k+'=> $'+(i+1)).join(',')+') as result',keys.map(k=>['p_rows','p_grants'].includes(k)?JSON.stringify(body[k]):Array.isArray(body[k])?'{'+body[k].join(',')+'}':body[k]&&typeof body[k]==='object'?JSON.stringify(body[k]):body[k]));}
     else throw new Error('UNKNOWN_RPC '+fn);
     await db.exec('commit');return fn==='talent_runtime_commit'?new Response(null,{status:204}):Response.json(result.rows[0].result??null);
    }catch(e:any){await db.exec('rollback');console.log('SQL ERROR',e.code,e.message);return Response.json({code:e.code,message:e.message},{status:e.code==='PT409'?409:400});}
@@ -1058,6 +1058,34 @@ describe('Transición relacional PostgreSQL 17',()=>{
    expect(saved.captureOnly).toBe(false);expect(saved.campaignId).toBe(cmp.data.id);expect(saved.recruiterId).toBe(recruiter);
    expect((await db.query('select received_at from talent.captures where id=$1',[event])).rows).toHaveLength(1);
   }
+ });
+
+
+ it('voicebot: shared inbox, atomic ownership, CAS, history and restricted access',async()=>{
+  const recruiter='60000000-0000-4000-8000-000000000001',analyst='60000000-0000-4000-8000-000000000002';
+  for(const [id,role] of [[recruiter,'RECLUTADOR'],[analyst,'ANALISTA_SELECCION']]){
+   await db.query('insert into auth.users values($1)',[id]);authUsers.set(id,{id});
+   await db.query("insert into talent.profiles(company_id,id,auth_user_id,username,display_name,role,status) values('tenant',$1::text,$1::uuid,$1::text,'Voicebot test',$2,'ACTIVO')",[id,role]);
+   await db.query("insert into talent.user_modules(company_id,id,user_id,module) values('tenant',$1,$1,'SELECCION')",[id]);
+  }
+  const lead=(await db.query("insert into public.voicebot_leads(external_id,phone,full_name,workday,experience,payload) values('ci-bot-1','999111222','Lead prueba','Semifull','Ventas', jsonb_build_object('extra','original')) returning *")).rows[0];
+  await expect(db.query("insert into public.voicebot_leads(external_id,phone) values('ci-bot-1','999111222')")).rejects.toThrow();
+  expect((await call('/api/voicebot/leads','GET',undefined,trainer)).status).toBe(403);
+  expect((await call('/api/voicebot/feed','GET',undefined,trainer)).status).toBe(403);
+  const feed=await call('/api/voicebot/feed','GET',undefined,recruiter);expect(feed.status).toBe(200);expect(Object.keys(feed.data.items[0]).sort()).toEqual(['id','received_at']);
+  for(const id of [recruiter,analyst]){const list=await call('/api/voicebot/leads?search=Lead','GET',undefined,id);expect(list.status).toBe(200);expect(list.data.items[0].id).toBe(lead.id);expect(list.data.items[0].experience).toBe('Ventas');}
+  const path='/api/voicebot/leads/'+lead.id;
+  const take=await call(path,'PATCH',{action:'TAKE',version:1},recruiter);expect(take.status).toBe(200);expect(take.data.owner_auth_id).toBe(recruiter);expect(new Date(take.data.received_at).getTime()).toBe(new Date(lead.received_at).getTime());
+  expect((await call(path,'PATCH',{action:'TAKE',version:1},analyst)).status).toBe(409);
+  expect((await call(path,'PATCH',{action:'TAKE',version:2},analyst)).status).toBe(409);
+  expect((await call(path,'PATCH',{action:'UPDATE',version:2,status:'CONTACTADO',notes:'Sin permiso'},analyst)).status).toBe(403);
+  const saved=await call(path,'PATCH',{action:'UPDATE',version:2,status:'CONTACTADO',notes:'Entrevista coordinada'},recruiter);expect(saved.status).toBe(200);expect(saved.data.management_notes).toBe('Entrevista coordinada');
+  expect((await call('/api/voicebot/leads?status=NUEVO','GET',undefined,recruiter)).data.total).toBe(0);
+  expect((await db.query('select * from public.voicebot_lead_history where lead_id=$1',[lead.id])).rows).toHaveLength(2);
+  await db.exec('begin; set local role authenticated;');
+  await db.query("select set_config('request.jwt.claim.sub',$1,true)",[trainer]);expect((await db.query('select * from public.voicebot_leads')).rows).toHaveLength(0);
+  await db.query("select set_config('request.jwt.claim.sub',$1,true)",[recruiter]);expect((await db.query('select * from public.voicebot_leads')).rows).toHaveLength(1);await db.exec('rollback');
+  const privileges=(await db.query("select has_table_privilege('anon','public.voicebot_leads','SELECT') as anonymous, has_table_privilege('authenticated','public.voicebot_leads','INSERT') as insert_allowed, has_function_privilege('authenticated','public.talent_voicebot_manage(uuid,uuid,bigint,text,text,text)','EXECUTE') as mutate")).rows[0];expect(privileges).toEqual({anonymous:false,insert_allowed:false,mutate:false});
  });
 
 });
