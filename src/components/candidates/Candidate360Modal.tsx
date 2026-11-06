@@ -1,3 +1,4 @@
+import { candidateAvailability } from '../../utils/candidateAvailability';
 import React, { useEffect, useState } from 'react';
 import { formatCandidateExperience, hasExperienceAnswer } from '../../utils/candidateExperience';
 import { IdentityAvatar } from '../common/IdentityAvatar';
@@ -155,7 +156,7 @@ export const Candidate360Modal: React.FC<Candidate360ModalProps> = ({
   const captureEvents = captureDossier?.events ?? [];
   const latestCapture = captureEvents.slice().reverse().find(event => event.applicant.formSubmission || event.applicant.techCenterAnswers);
   const submittedAnswers = latestCapture?.applicant.formSubmission?.answers ?? latestCapture?.applicant.techCenterAnswers;
-  const submittedSchedule = [submittedAnswers?.workday, submittedAnswers?.availability].filter(Boolean).join(' · ');
+  const availability = candidateAvailability(captureEvents, candidate.workSchedule);
   const experienceAnswers = captureEvents.slice().reverse()
     .map(event => event.applicant.formSubmission?.answers ?? event.applicant.techCenterAnswers)
     .find(hasExperienceAnswer);
@@ -440,6 +441,11 @@ export const Candidate360Modal: React.FC<Candidate360ModalProps> = ({
                   <p className="mt-1 whitespace-pre-wrap break-words font-semibold text-slate-900">{captureLoading ? 'Cargando respuestas…' : submittedExperience}</p>
                 </div>
 
+                <div className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 text-xs sm:grid-cols-2">
+                  <div><span className="block font-semibold text-slate-500">Horario / turno elegido</span><p className="mt-1 whitespace-pre-wrap font-semibold text-slate-900">{captureLoading ? 'Cargando respuestas…' : availability.shift}</p></div>
+                  <div><span className="block font-semibold text-slate-500">Jornada elegida</span><p className="mt-1 font-semibold text-slate-900">{captureLoading ? 'Cargando respuestas…' : availability.workday}</p></div>
+                </div>
+
                 {/* Pipeline visual stepper */}
                 <div>
                   <h4 className="mb-2 text-2xs font-bold uppercase tracking-wider text-slate-600">
@@ -529,8 +535,12 @@ export const Candidate360Modal: React.FC<Candidate360ModalProps> = ({
                       <strong className="text-slate-900">{submittedAnswers?.modality || candidate.workModality || 'Sin especificar'}</strong>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-2xs font-semibold">Horario / Jornada</span>
-                      <strong className="text-slate-900">{submittedSchedule || candidate.workSchedule || 'Sin especificar'}</strong>
+                      <span className="text-slate-500 block text-2xs font-semibold">Horario / turno elegido</span>
+                      <strong className="text-slate-900">{captureLoading ? 'Cargando respuestas…' : availability.shift}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-2xs font-semibold">Jornada elegida</span>
+                      <strong className="text-slate-900">{captureLoading ? 'Cargando respuestas…' : availability.workday}</strong>
                     </div>
 
                     <div>
