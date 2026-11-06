@@ -28,6 +28,8 @@ export function AttendancePanel({participants,date,setDate,onToday,windowInfo,lo
  const state=windowInfo&&now!==null?liveAttendanceState(windowInfo,now):null;
  const matchesDate=windowInfo?.startAt.slice(0,10)===date;
  const canMark=!loading&&matchesDate&&(state==='OPEN'||state==='UNLOCKED');
+ const beforeEntry=participants.filter(p=>p.training?.injection&&date<p.training.injection.date).length;
+ const historical=now!==null&&date<limaDate(now);
  const dates=pastAttendanceDates(participants,now===null?limaDate():limaDate(now));
  const historicalDate=dates.includes(historyDate)?historyDate:dates[0];
  const button='rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-[#0B2847] hover:bg-blue-50 disabled:opacity-50';
@@ -42,6 +44,11 @@ export function AttendancePanel({participants,date,setDate,onToday,windowInfo,lo
       <button className={button+' inline-flex items-center gap-2'} aria-expanded={historyOpen} aria-controls="past-attendance" onClick={()=>setHistoryOpen(v=>!v)}><History className="h-4 w-4"/>{historyOpen?'Ocultar asistencias pasadas':'Ver asistencias pasadas'}</button>
      </div>
     </div>
+    {(historical||beforeEntry>0)&&<div role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+     Estás registrando asistencia del <strong>{attendanceDateLabel(date)}</strong>.
+     {beforeEntry>0&&<p className="mt-1">{beforeEntry} participante(s) ingresaron después de esta fecha. Su asistencia se habilita desde su incorporación; el desbloqueo no cambia esa fecha.</p>}
+     {historical&&<button className={button+' mt-2'} onClick={onToday}>Marcar hoy</button>}
+    </div>}
     <AttendanceTable participants={participants} date={date} openCandidate360={openCandidate360} disabled={saving||!canMark} onMark={onMark}/>
    </div>
    <aside className="space-y-3">
@@ -81,7 +88,7 @@ export function AttendanceTable({participants,date,openCandidate360,onMark,disab
     return <tr key={candidate.id}>
      <td className="px-4 py-3"><button className="font-semibold text-[#0B2847]" onClick={()=>openCandidate360(candidate.id)}>{candidate.fullName||'Candidato'}</button><InjectionBadge candidate={candidate}/></td>
      <td className="px-4 py-3 text-slate-500">{candidate.dni||'—'}</td>
-     <td className="px-4 py-3">{beforeInjection?'Aún no incorporado':labels[status]||status||'Sin marcar'}</td>
+     <td className="px-4 py-3">{beforeInjection?<>Aún no incorporado<span className="mt-1 block text-xs text-slate-500">Ingreso: {attendanceDateLabel(candidate.training!.injection!.date)}</span></>:labels[status]||status||'Sin marcar'}</td>
      <td className="whitespace-pre-wrap break-words px-4 py-3 text-slate-500">{record?.notes||'—'}</td>
      {onMark&&<td className="px-4 py-3"><select aria-label={'Asistencia de '+candidate.fullName} disabled={disabled||beforeInjection} value={status} onChange={e=>onMark(candidate.id,e.target.value as AttendanceStatus)} className="rounded-lg border border-slate-200 p-2 disabled:bg-slate-50"><option value="" disabled>Seleccionar</option>{['PRESENTE','TARDANZA','FALTA','JUSTIFICADO'].map(s=><option key={s} value={s}>{labels[s]}</option>)}</select></td>}
     </tr>;
