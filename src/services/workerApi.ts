@@ -18,7 +18,7 @@ const WORKER_ERROR_MESSAGES: Record<string, string> = {
   VOICEBOT_INVALID: 'Revisa los datos de gestión del lead.',
   VOICEBOT_NOT_FOUND: 'El lead ya no está disponible.',
   VOICEBOT_FAILED: 'No se pudo cargar o guardar el lead. Intenta actualizar.',
-  OFFER_SIGNATURES_PENDING: 'Todos los participantes deben firmar su propuesta laboral antes de finalizar la etapa teórica. Revisa la sección Propuestas.',
+  OFFER_SIGNATURES_PENDING: 'Todos los participantes que continúan deben firmar su propuesta antes de finalizar teoría. Los cesados están exentos. Revisa Propuestas.',
   OFFER_STAGE_CLOSED: 'La etapa teórica ya está cerrada; no se puede cambiar la propuesta.',
   OFFER_INVALID_TEMPLATE: 'La propuesta debe pertenecer a la misma empresa y campaña de la capacitación.',
   OFFER_ALREADY_SIGNED: 'Ya existen firmas. La propuesta asignada se conserva sin modificaciones.',

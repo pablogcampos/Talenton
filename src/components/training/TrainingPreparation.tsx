@@ -11,6 +11,16 @@ export const TrainingPreparation: React.FC<{cohort: TrainingCohort; participants
   const [error, setError] = useState('');
   const [finishing, setFinishing] = useState(false);
   const [grades, setGrades] = useState<Record<string,string>>({});
+  const [ceasing,setCeasing]=useState<CandidateRecord|null>(null);
+  const [reason,setReason]=useState('');
+  const cease=async()=>{
+    if(!ceasing||saving||!reason.trim())return;
+    setSaving(true);setError('');
+    try{
+      await workerApi(`/api/trainings/${encodeURIComponent(cohort.id)}/participants/${encodeURIComponent(ceasing.id)}/dropout`,{method:'POST',body:JSON.stringify({stage:'CAPACITACION_TEORICA',category:'OTRO',observation:reason.trim()})});
+      setCeasing(null);setReason('');setFinishing(false);
+    }catch(e){setError(getWorkerErrorMessage(e,'No se pudo registrar el cese.'));}finally{setSaving(false);}
+  };
   const canManage = ['ADMIN','JEFE_FORMACION','COORDINADOR_FORMACION'].includes(currentUser.role)
     || (currentUser.role === 'FORMADOR' && cohort.trainerId === currentUser.id);
   const pending = people.filter(p => p.training?.status === 'PENDIENTE_INICIO');
@@ -35,6 +45,12 @@ export const TrainingPreparation: React.FC<{cohort: TrainingCohort; participants
       {cohort.status === 'EN_CAPACITACION' && active.length > 0 &&
         <button disabled={saving} onClick={()=>{setFinishing(true);setError('');}} className="min-h-11 rounded-xl bg-[#143c55] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0b2847] focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:opacity-50">Finalizar etapa teórica</button>}
     </div>}
+    {ceasing&&<form className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4" onSubmit={e=>{e.preventDefault();void cease();}}>
+      <h3 className="font-semibold">Cesar a {ceasing.fullName}</h3>
+      <p className="text-sm">Se conservará su historial y su firma dejará de ser requisito para finalizar la etapa teórica.</p>
+      <label className="block text-sm">Motivo del cese<textarea required maxLength={2000} value={reason} onChange={e=>setReason(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white p-3"/></label>
+      <button type="button" disabled={saving} onClick={()=>setCeasing(null)} className="mr-3 rounded-lg border px-4 py-2">Cancelar</button><button disabled={saving||!reason.trim()} className="rounded-lg bg-red-700 px-4 py-2 text-white disabled:opacity-50">Confirmar cese</button>
+    </form>}
     {finishing && cohort.status === 'EN_CAPACITACION' && <form className="space-y-4 rounded-xl border border-teal-200 bg-teal-50/40 p-4 sm:p-5" onSubmit={e=>{e.preventDefault();if(valid)void run('finish');}}>
       <h3 className="font-semibold">Nota final de la capacitación</h3>
       <p className="text-sm text-slate-600">Escala de 0 a 20. Al guardar, los participantes quedarán en Pendiente a OJT.</p>
@@ -48,6 +64,8 @@ export const TrainingPreparation: React.FC<{cohort: TrainingCohort; participants
     <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-semibold text-[#0b2847]">Participantes <span className="ml-2 rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">{people.length}</span></h3><span className="text-xs text-slate-500">Estado de la etapa teórica</span></div><ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 text-sm">{people.map(p=><li key={p.id} className="flex flex-col justify-between gap-3 px-4 py-4 transition hover:bg-slate-50 sm:flex-row sm:items-center">
       <span className="flex min-w-0 items-center gap-3 font-medium text-[#0b2847]"><span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#edf4f8] text-xs font-semibold text-[#143c55]">{p.fullName.split(/\s+/).filter(Boolean).slice(0,2).map(n=>n[0]).join('')}</span><span className="break-words">{p.fullName}<InjectionBadge candidate={p}/></span></span><span className={`self-start rounded-full px-3 py-1.5 text-xs font-medium sm:self-auto ${p.training?.status === 'PENDIENTE_OJT' ? 'bg-amber-50 text-amber-800' : p.training?.status === 'EN_CAPACITACION' ? 'bg-teal-50 text-teal-800' : 'bg-slate-100 text-slate-600'}`}>{p.training?.status === 'PENDIENTE_OJT' ? 'Pendiente a OJT' : p.training?.status === 'EN_CAPACITACION' ? 'En capacitación' : p.training?.status === 'PENDIENTE_INICIO' ? 'Pendiente de inicio' : p.training?.status?.replaceAll('_',' ')}
       {typeof p.training?.finalGrade === 'number' && <> · Nota final: {p.training.finalGrade}/20</>}</span>
+      {p.training?.status==='DESERTO'&&<span className="text-xs text-slate-500">Cesado · Firma no requerida</span>}
+      {canManage&&['PENDIENTE_ASIGNACION','PROGRAMADA','EN_CAPACITACION'].includes(cohort.status)&&['PENDIENTE_INICIO','EN_CAPACITACION'].includes(p.training?.status||'')&&<button disabled={saving} onClick={()=>{setCeasing(p);setReason('');setError('');setFinishing(false);}} className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-700 disabled:opacity-50">Cesar participante</button>}
     </li>)}</ul>
     {people.some(p=>(p.training?.evaluations?.length??0)>0) && <details className="rounded-xl border border-slate-200 px-4 py-3 text-sm"><summary className="cursor-pointer">Historial de notas anteriores</summary>
       {people.filter(p=>(p.training?.evaluations?.length??0)>0).map(p=><div key={p.id} className="mt-2"><strong>{p.fullName}</strong><ul>{p.training.evaluations.map(e=><li key={e.id}>{e.moduleName}: {e.score}/{e.maxScore}</li>)}</ul></div>)}

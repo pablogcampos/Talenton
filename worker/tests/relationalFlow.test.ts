@@ -1088,4 +1088,29 @@ describe('Transición relacional PostgreSQL 17',()=>{
   const privileges=(await db.query("select has_table_privilege('anon','public.voicebot_leads','SELECT') as anonymous, has_table_privilege('authenticated','public.voicebot_leads','INSERT') as insert_allowed, has_function_privilege('authenticated','public.talent_voicebot_manage(uuid,uuid,bigint,text,text,text)','EXECUTE') as mutate")).rows[0];expect(privileges).toEqual({anonymous:false,insert_allowed:false,mutate:false});
  });
 
+
+ it('formador cesa con historial; solo el cesado queda exento de firma al cerrar teoría',async()=>{
+  const ids:string[]=[];
+  for(const dni of ['97111001','97111002']){const r=await call('/api/candidates','POST',{dni,fullName:'Cese '+dni,phone:'999888001',campaignId,recruiterId:admin,source:'Otro'});expect(r.status).toBe(201);ids.push(r.data.id);expect((await call('/api/candidates/'+r.data.id+'/stage','POST',{stage:'APTO_CAPACITACION'})).status).toBe(200);}
+  const day=new Date().toISOString().slice(0,10);
+  const created=await call('/api/trainings/from-selection','POST',{campaignId,candidateIds:ids,name:'CI cese',code:'CI-CESE',startDate:day,endDate:day,totalDays:1,modality:'PRESENCIAL',schedule:'09:00-16:00'});expect(created.status).toBe(201);
+  const group=created.data.id,path='/api/trainings/'+group;
+  expect((await call(path+'/trainer','POST',{trainerId:trainer})).status).toBe(200);
+  expect((await call(path+'/theory/start','POST',{},trainer)).status).toBe(200);
+  const data={stage:'CAPACITACION_TEORICA',category:'OTRO',observation:'Retiro comunicado por participante'};
+  expect([403,404]).toContain((await call(path+'/participants/'+ids[1]+'/dropout','POST',data,other)).status);
+  expect((await call(path+'/participants/'+ids[1]+'/dropout','POST',{...data,observation:''},trainer)).status).toBe(400);
+  expect((await call(path+'/participants/'+ids[1]+'/dropout','POST',data,trainer)).status).toBe(201);
+  const finish={grades:[{candidateId:ids[0],score:18}]};
+  expect((await call(path+'/theory/finish','POST',finish,trainer)).data.message).toBe('OFFER_SIGNATURES_PENDING');
+  const template=await call('/api/offers/templates','POST',{campaignId,title:'CI cese propuesta',content:'Condiciones y políticas para {{nombre}} en esta capacitación.'});expect(template.status).toBe(200);
+  expect((await call('/api/offers/assign','POST',{groupId:group,templateId:template.data})).status).toBe(200);
+  const docs=(await db.query('select * from talent_offers.documents where group_id=$1',[group])).rows;
+  const doc=docs.find((d:any)=>d.snapshot.name==='Cese 97111001');
+  expect((await call('/api/public/offers/'+doc.token,'POST',{dni:doc.snapshot.dni,accepted:true,contentHash:doc.content_hash,signature:[Array.from({length:12},(_,i)=>[i*10,30+i])]})).status).toBe(200);
+  expect((await call(path+'/theory/finish','POST',finish,trainer)).data.status).toBe('PENDIENTE_OJT');
+  const exited=(await call('/api/bootstrap')).data.candidates.find((c:any)=>c.id===ids[1]);expect(exited.training.status).toBe('DESERTO');expect(exited.training.dropoutRecord.observation).toBe(data.observation);
+  expect((await db.query('select count(*)::int as n from talent_offers.documents where group_id=$1 and signed_at is null',[group])).rows[0].n).toBe(1);
+ });
+
 });

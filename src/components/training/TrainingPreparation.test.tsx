@@ -15,7 +15,8 @@ describe('flujo simplificado de teoría',()=>{
   actor();const html=renderToStaticMarkup(<TrainingPreparation cohort={cohort} participants={[participant,{...participant,id:'p2'}]}/>);
   expect(html).toContain('Iniciar capacitación del grupo (2)');
   expect(html).not.toContain('Agregar evaluación');expect(html).not.toContain('Falta configurar');
-  expect((html.match(/<button/g)||[])).toHaveLength(1);
+  expect((html.match(/Iniciar capacitación del grupo/g)||[])).toHaveLength(1);
+  expect((html.match(/Cesar participante/g)||[])).toHaveLength(2);
  });
  it('ofrece finalizar teoría cuando hay participantes en capacitación',()=>{
   actor();const html=renderToStaticMarkup(<TrainingPreparation cohort={{...cohort,status:'EN_CAPACITACION'}} participants={[{...participant,training:{...participant.training,status:'EN_CAPACITACION'}}]}/>);
