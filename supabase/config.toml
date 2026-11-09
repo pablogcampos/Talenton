@@ -19,3 +19,6 @@ minimum_password_length = 12
 enable_signup = false
 double_confirm_changes = true
 enable_confirmations = false
+
+[functions.voicebot-leads]
+verify_jwt = false
