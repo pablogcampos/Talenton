@@ -79,7 +79,40 @@ export async function handleSelectionAdvanced(request: Request, env: Env, actor:
   const store = new Store(env, helpers, await helpers.token(env));
   const reply = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'cache-control': 'no-store' } });
   const getCampaign = async (id: string, tx?: string, manager = false) => { assert(safeId(id), 'INVALID_ID'); const c = await store.get(`campaigns/${id}`, tx); assert(c, 'NOT_FOUND', 404); campaignAccess(actor, c!, manager); return c!; };
-  const getApp = async (id: string, tx?: string) => { assert(safeId(id), 'INVALID_ID'); const app = await store.get(`selectionApplications/${id}`, tx); assert(app, 'NOT_FOUND', 404); await getCampaign(app!.campaignId, tx); if (actor.role === 'RECLUTADOR') assert(app!.recruiterId === actor.uid, 'FORBIDDEN', 403); return app!; };
+  const getApp = async (id: string, tx?: string) => { assert(safeId(id) || /^APP:[A-Za-z0-9_:-]{1,220}$/.test(id), 'INVALID_ID'); const app = await store.get(`selectionApplications/${id}`, tx); assert(app, 'NOT_FOUND', 404); await getCampaign(app!.campaignId, tx); if (actor.role === 'RECLUTADOR') assert(app!.recruiterId === actor.uid, 'FORBIDDEN', 403); return app!; };
+  if (parts[2] === 'campaigns' && safeId(parts[3]) && parts[4] === 'transfers' && request.method === 'GET') {
+    await getCampaign(parts[3]);
+    const apps = await store.query('selectionApplications', { campaignId: parts[3] }, undefined, 10000);
+    return reply({ items: apps.filter(a => a.status === 'CERRADA' && a.transferredTo && (actor.role !== 'RECLUTADOR' || a.recruiterId === actor.uid)).map(a => ({ id: a.id, name: a.candidateName, outcome: terminal.includes(a.outcomeSnapshot?.selection?.status) ? a.outcomeSnapshot.selection.status : a.outcomeSnapshot?.selection?.stage || a.stage, closedAt: a.closedAt })) });
+  }
+  if (parts[2] === 'candidates' && safeId(parts[3]) && parts[4] === 'transfer' && request.method === 'POST') {
+    const input = await body(request); assert(safeId(input.campaignId), 'INVALID_ID');
+    const result = await store.atomic(async tx => {
+      const c = await store.get(`candidates/${parts[3]}`, tx); assert(c?.campaignId, 'NOT_FOUND', 404);
+      await getCampaign(c!.campaignId, tx);
+      assert(input.fromCampaignId === c!.campaignId, 'APPLICATION_CHANGED', 409);
+      if (actor.role === 'RECLUTADOR') assert(c!.recruiterId === actor.uid, 'FORBIDDEN', 403);
+      assert(c!.currentProcess === 'SELECCION' && !c!.trainingId, 'CANDIDATE_IN_DOWNSTREAM_PROCESS', 409);
+      assert(c!.campaignId !== input.campaignId, 'SAME_CAMPAIGN', 409);
+      const target = await getCampaign(input.campaignId, tx);
+      assert(target.companyId === c!.companyId && !terminalCampaign.includes(target.status), 'CAMPAIGN_NOT_ACTIVE', 409);
+      const owner = await store.get(`users/${c!.recruiterId}`, tx);
+      assert(owner && owner.enabled !== false && owner.status === 'ACTIVO' && (owner.role === 'ADMIN' || target.assignedUserIds?.includes(c!.recruiterId)), 'RECRUITER_NOT_AUTHORIZED', 403);
+      const apps = await store.query('selectionApplications', { candidateId: c!.id }, tx, 10000);
+      const active = apps.filter(a => a.status === 'ACTIVA');
+      const previous = active.find(a => a.id === c!.selectionApplicationId) || active.find(a => a.campaignId === c!.campaignId);
+      assert(previous && active.every(a => a.campaignId === c!.campaignId), 'APPLICATION_NOT_ACTIVE', 409);
+      const trace = action(actor, 'Traslado de convocatoria', `${c!.campaignName} → ${target.title}. Se asignó a otra convocatoria.`);
+      const id = `SEL-${crypto.randomUUID()}`;
+      const selection = { callId: target.id, stage: 'NUEVO', status: 'ACTIVO', scores: { psicometrico: 0, vozDiccion: 0, tipificacionWPM: 0, simulacionRoleplay: 0, overall: 0 }, contactHistory: [], evaluations: [], evaluationsList: [], documents: [], observations: [], traceability: [] };
+      return { result: { ok: true }, writes: [
+        ...active.filter(a => a.id !== previous.id).map(a => ({ path: `selectionApplications/${a.id}`, data: { ...a, status: 'CERRADA', closedAt: trace.at, closeReason: 'Participación original consolidada al trasladar', outcomeSnapshot: snapshot(c!) } })),
+        { path: `selectionApplications/${previous.id}`, data: { ...previous, status: 'CERRADA', closedAt: trace.at, closeReason: 'Se asignó a otra convocatoria', candidateName: c!.fullName, transferredTo: target.id, outcomeSnapshot: snapshot(c!), history: [...(previous.history || []), trace] } },
+        { path: `selectionApplications/${id}`, data: { id, candidateId: c!.id, companyId: c!.companyId, campaignId: target.id, recruiterId: c!.recruiterId, status: 'ACTIVA', createdAt: trace.at, history: [trace], processSnapshot: null }, create: true },
+        { path: `candidates/${c!.id}`, data: { campaignId: target.id, campaignCode: target.code, campaignName: target.title, selectionApplicationId: id, selectionActive: true, selectionProcessSnapshot: null, applicationDate: trace.at.slice(0, 10), currentStage: 'SELECCION', selection }, patch: true },
+      ] };
+    }); return reply(result);
+  }
   if (parts[2] === 'campaigns' && safeId(parts[3])) {
     const campaignId = parts[3];
     if (request.method === 'GET') { await getCampaign(campaignId); const templates = await store.query('selectionTemplates', { campaignId }, undefined, 201); return reply({ templates, communicationTypes: ['Citación', 'Recordatorio', 'Confirmación', 'Resultado', 'Reprogramación'] }); }
@@ -161,8 +194,8 @@ export async function handleSelectionAdvanced(request: Request, env: Env, actor:
       return { result: { ok: true }, writes: [{ path: `selectionApplications/${id}`, data, ...(!existing ? { create: true } : {}) }, { path: `candidates/${c!.id}`, data: { selectionApplicationId: '', selectionActive: false }, patch: true }] };
     }); return reply(result);
   }
-  if (parts[2] === 'applications' && safeId(parts[3])) {
-    const id = parts[3];
+  if (parts[2] === 'applications' && (safeId(parts[3]) || /^APP:[A-Za-z0-9_:-]{1,220}$/.test(decodeURIComponent(parts[3])))) {
+    const id = decodeURIComponent(parts[3]);
     if (request.method === 'GET') { const app = await getApp(id), c = await store.get(`candidates/${app.candidateId}`); return reply({ ...app, notifications: processNotifications(app, c?.selectionApplicationId === id ? c : {}) }); }
     const input = await body(request); assert(safeId(input.requestId), 'REQUEST_ID_REQUIRED');
     const result = await store.atomic(async tx => {

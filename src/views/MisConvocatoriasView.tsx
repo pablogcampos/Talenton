@@ -1,3 +1,4 @@
+import { TransferredCandidates } from '../components/candidates/CandidateTransfer';
 import {InjectParticipantsModal} from '../components/training/InjectParticipantsModal';
 import React, { useState } from 'react';
 import { getWorkerErrorMessage } from '../services/workerApi';
@@ -693,6 +694,8 @@ export const MisConvocatoriasView: React.FC = () => {
 
         </div>
       )}
+
+      {activeCampaign && <TransferredCandidates campaignId={activeCampaign.id} />}
 
       {/* SUBTAB 2: KANBAN CRM (FIXED HORIZONTAL SCROLL & SPACING) */}
       {activeSubTab === 'kanban' && (

@@ -1113,4 +1113,36 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect((await db.query('select count(*)::int as n from talent_offers.documents where group_id=$1 and signed_at is null',[group])).rows[0].n).toBe(1);
  });
 
+
+ it('traslada sin duplicar la participación activa y conserva resultado e historial',async()=>{
+  const target=await call('/api/campaigns','POST',{code:'CI-TRANSFER',title:'Destino traslado',company:'CI',area:'Ventas',vacancies:2,status:'EN_PROCESO',responsibles:[{userId:admin,target:2}],sources:[],processType:'EXTERNO',managementType:'PRESENCIAL',location:'Lima',shift:'09:00-16:00'});
+  expect(target.status).toBe(201);
+  const candidate=await call('/api/candidates','POST',{dni:'99988771',fullName:'Persona traslado',age:28,campaignId,recruiterId:admin,phone:'999887771',source:'Otro',applicationDate:'2026-11-09'});
+  expect(candidate.status).toBe(201);const id=candidate.data.id;
+  await db.query("update talent.applications set stage='NO_APTO',selection_status='NO_APTO' where person_id=$1",[id]);
+  const path='/api/selection/candidates/'+id+'/transfer',input={campaignId:target.data.id,fromCampaignId:campaignId};
+  expect((await call(path,'POST',input,trainer)).status).toBe(403);
+  expect((await call(path,'POST',{...input,campaignId})).status).toBe(409);
+  const recruiter=crypto.randomUUID();
+  await db.query('insert into auth.users(id) values($1)',[recruiter]);
+  authUsers.set(recruiter,{id:recruiter,email:'transfer@auth.talentcc.invalid'});
+  await db.query("insert into talent.profiles(company_id,id,auth_user_id,username,display_name,role,status) values('tenant',$1::text,$1::uuid,'ci.transfer','CI Recruiter','RECLUTADOR','ACTIVO')",[recruiter]);
+  await db.query("insert into talent.user_modules(company_id,id,user_id,module) values('tenant',$1,$1,'SELECCION')",[recruiter]);
+  for(const cid of [campaignId,target.data.id])await db.query("insert into talent.campaign_assignments(company_id,id,campaign_id,user_id,assignment_kind) values('tenant',$1,$2,$3,'RESPONSIBLE')",[recruiter+cid,cid,recruiter]);
+  await db.query('update talent.applications set recruiter_id=$1 where person_id=$2',[recruiter,id]);
+  await db.query('update talent.persons set owner_id=$1 where id=$2',[recruiter,id]);
+  expect((await call(path,'POST',input,recruiter)).status).toBe(200);
+  const rows=(await db.query('select * from talent.applications where person_id=$1',[id])).rows;
+  expect(rows.filter((r:any)=>r.status==='ACTIVA')).toHaveLength(1);
+  const old=rows.find((r:any)=>r.campaign_id===campaignId);
+  expect(old.status).toBe('CERRADA');expect(old.stage).toBe('NO_APTO');
+  expect(old.annotations.outcomeSnapshot.selection.stage).toBe('NO_APTO');
+  expect((await call('/api/selection/campaigns/'+campaignId+'/transfers')).data.items).toContainEqual(expect.objectContaining({name:'Persona traslado',outcome:'NO_APTO'}));
+  const history=await call('/api/selection/candidates/'+id);expect(history.data.applications).toHaveLength(2);
+  expect((await call('/api/selection/applications/'+encodeURIComponent(old.id))).status).toBe(200);
+  expect((await call(path,'POST',input)).status).toBe(409);
+  const after=(await call('/api/bootstrap')).data.candidates.find((c:any)=>c.id===id);
+  expect(after.campaignId).toBe(target.data.id);expect(after.selection.stage).toBe('NUEVO');
+  expect((await call('/api/selection/candidates/'+personId+'/transfer','POST',input)).status).toBe(409);
+ });
 });
