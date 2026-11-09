@@ -227,7 +227,7 @@ describe('asignación de formadores y alcance RBAC', () => {
   });
 
   it('reasigna usando el perfil del servidor y conserva la etapa del grupo', async () => {
-    installGoogleMocks('JEFE_FORMACION');
+    installGoogleMocks('ADMIN');
     const result = await request('/api/trainings/training-1/trainer', 'POST', { trainerId: 'trainer-1', trainerName: 'Nombre manipulado', notes: 'Reasignación operativa' });
     expect(result.status).toBe(200);
     const payload = await result.json() as { training: Record<string, unknown> };
