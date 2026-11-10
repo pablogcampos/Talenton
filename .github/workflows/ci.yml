@@ -34,6 +34,9 @@ jobs:
       - name: Typecheck
         run: npm run check
 
+      - name: Probar envío y confirmación de captación
+        run: npx vitest run src/services/captureApi.test.ts src/views/PublicCaptureView.test.tsx
+
       - name: Build
         run: npm run build
 
