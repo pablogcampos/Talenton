@@ -170,6 +170,13 @@ export async function handleCapture(request: Request, env: Env, actor: Actor | u
     const catalog = env.DATA_PROVIDER !== 'firebase' ? await env.RELATIONAL_RUNTIME!.captureCatalog() : undefined;
     const techCenter = Boolean(catalog) || link.companyId === 'techcenter';
     const formVersion = catalog ? COMPANY_CAPTURE_FORM : TECH_CENTER_FORM;
+    if(catalog) for(const campaign of catalog.campaigns){
+      try {
+        validateCaptureForm(campaign.form || defaultPublicCaptureForm);
+      } catch {
+        Object.assign(campaign,{unavailableReason:'Esta campaña está actualizando su formulario. Contacta al responsable del enlace.'});
+      }
+    }
     if (request.method === 'GET') return reply({
       active: true, noticeVersion: 'capture-v1',
       turnstileSiteKey: env.TURNSTILE_SITE_KEY || '',
@@ -182,6 +189,7 @@ export async function handleCapture(request: Request, env: Env, actor: Actor | u
     let formSubmission:Data|undefined,validatedAnswers:FormAnswers|undefined;
     const verifiedFiles=new Map<string,CaptureFile>();
     if(chosen){
+      if((chosen as {unavailableReason?:string}).unavailableReason)throw new CaptureError('Esta campaña está actualizando su formulario. Tus respuestas se conservan en esta página.',409);
       if(chosen.form&&input.formRevision!==chosen.formRevision)throw new CaptureError('El formulario cambió. Recarga la página antes de enviarlo.',409);
       const config=publicCaptureConfig(chosen.configuration);if(!config)throw new CaptureError('Campaña pendiente de configuración.');
       try{

@@ -412,6 +412,7 @@ describe('Transición relacional PostgreSQL 17',()=>{
   env.ORG_ENABLED='true';
   try{
    const form=defaultCaptureForm();form.title='Formulario CI publicado';
+   form.questions.find(q=>q.id==='preferredCampaign')!.type='select'; // Historic published dropdown must remain submittable.
    form.questions.push({id:'customSkills',label:'Habilidades',section:'Adicional',type:'multiple',required:true,options:[{value:'ventas',label:'Ventas'},{value:'soporte',label:'Soporte'}]},{id:'cvFile',label:'CV',section:'Adicional',type:'file',required:true});
    const id='techcenter:bitel-portabilidad';
    const row=(await call('/api/capture/forms')).data.find((r:any)=>r.id===id);
@@ -457,8 +458,15 @@ describe('Transición relacional PostgreSQL 17',()=>{
    expect((await(await pub()).json() as any).campaigns.find((c:any)=>c.id===id).form.title).toBe(form.title);
    // Failed database transaction must remove the newly uploaded object, not the old file.
    failNextCaptureCommit=true;
-   expect((await pub({...payload,documentNumber:'98800112',requestId:crypto.randomUUID()},file)).status).not.toBe(201);
+   const failedPayload={...payload,documentNumber:'98800112',requestId:crypto.randomUUID()};
+   expect((await pub(failedPayload,file)).status).not.toBe(201);
    expect(objects.size).toBe(before+1);
+   expect((await pub(failedPayload,file)).status).toBe(201);
+   expect((await pub(failedPayload,file)).status).toBe(201);
+   expect(objects.size).toBe(before+2);
+   const recovered=(await call('/api/capture/management','GET',undefined,admin,'techcenter')).data.events.filter((e:any)=>e.applicant.documentNumber==='98800112');
+   expect(recovered).toHaveLength(1);
+   expect(recovered[0].applicant.formSubmission.answers.customSkills).toEqual(['soporte','ventas']);
    const audit=(await db.query("select count(*)::int as n from talent_org.audit_events where table_name='capture_forms' and entity_id=$1",[id])).rows[0].n;expect(audit).toBe(3);
   }finally{failNextCaptureCommit=false;env.ORG_ENABLED=undefined;}
  });

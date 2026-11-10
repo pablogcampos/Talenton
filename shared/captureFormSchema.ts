@@ -107,7 +107,9 @@ export function validateCaptureForm(raw:unknown):CaptureForm {
   const baseline=defaultCaptureForm().questions;
   for(const id of protectedQuestions){
     const q=questions.find(q=>q.id===id),base=baseline.find(q=>q.id===id)!;
-    if(!q||q.type!==base.type||!q.required||q.condition)throw new Error('Conserva el campo obligatorio de sistema: '+id);
+    // Radio buttons and dropdowns both persist one string; legacy published forms use both.
+    const compatible=q&&(q.type===base.type||(['single','select'].includes(q.type)&&['single','select'].includes(base.type)));
+    if(!q||!compatible||!q.required||q.condition)throw new Error('Conserva el campo obligatorio de sistema: '+id);
     if(id==='documentType'&&JSON.stringify(q.options)!==JSON.stringify(base.options))throw new Error('Conserva los tipos de documento del sistema.');
   }
   // Only previous questions can be referenced: no cycles or conditions on hidden descendants.

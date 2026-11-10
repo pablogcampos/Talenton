@@ -22,6 +22,15 @@ export async function publicCaptureApi<T>(token: string, input?: object,files?:R
   if (!base) throw new Error('El formulario está pendiente de configuración.');
   let payload:FormData|string|undefined=input?JSON.stringify(input):undefined;
   if(input&&files&&Object.keys(files).length){const form=new FormData();form.set('payload',JSON.stringify(input));for(const [id,file]of Object.entries(files))form.set('file:'+id,file);payload=form;}
-  const result = await fetch(`${base}/api/public/capture/${token}`, { method: input ? 'POST' : 'GET', headers:payload instanceof FormData?{}:{'Content-Type':'application/json'}, ...(payload?{body:payload}:{}) });
-  const data = await result.json(); if (!result.ok) throw new Error(data.message || 'No se pudo enviar la solicitud.'); return data;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),45000);
+  try {
+  const result = await fetch(`${base}/api/public/capture/${token}`, { signal:controller.signal, method: input ? 'POST' : 'GET', headers:payload instanceof FormData?{}:{'Content-Type':'application/json'}, ...(payload?{body:payload}:{}) });
+  const data = await result.json(); if (!result.ok) throw new Error(data.message || 'No se pudo enviar la solicitud.');
+  if(input&&data?.ok!==true)throw new Error('No se recibió confirmación del guardado. Vuelve a enviar sin cerrar esta página.');
+  return data;
+  } catch(error){
+    if(controller.signal.aborted||error instanceof TypeError)throw new Error('No se pudo confirmar el registro por un problema de conexión. Vuelve a enviar sin cerrar esta página.');
+    throw error;
+  } finally {clearTimeout(timeout);}
 }

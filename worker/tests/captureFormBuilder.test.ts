@@ -5,6 +5,14 @@ import {publicCaptureConfig} from '../../shared/captureCampaignConfig';
 const configuration={minAge:18,maxAge:60,workdays:['Full time'],schedules:['Turno mañana','Turno tarde'],modality:'Presencial' as const};
 const custom=(type:FormQuestion['type'],extra:Partial<FormQuestion>={}):FormQuestion=>({id:'custom',label:'Pregunta',section:'Extra',type,required:true,...extra});
 describe('Editor de formularios',()=>{
+ it('acepta desplegables históricos sin debilitar los campos protegidos',()=>{
+  const form=defaultCaptureForm();
+  const legacy={...form,questions:form.questions.map(q=>q.id==='preferredCampaign'?{...q,type:'select' as const}:q)};
+  expect(validateCaptureForm(legacy).questions.find(q=>q.id==='preferredCampaign')?.type).toBe('select');
+  for(const patch of [{type:'multiple'},{type:'short'},{required:false},{condition:{field:'fullName',operator:'equals',value:'x'}}]){
+   expect(()=>validateCaptureForm({...legacy,questions:legacy.questions.map(q=>q.id==='preferredCampaign'?{...q,...patch}:q)})).toThrow();
+  }
+ });
  it('la plantilla conserva el orden solicitado, condiciones y campos del sistema',()=>{
   const f=validateCaptureForm(defaultCaptureForm());
   expect(f.questions).toHaveLength(27);

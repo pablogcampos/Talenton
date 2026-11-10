@@ -1,7 +1,7 @@
 export const TECH_CENTER_FORM = 'techcenter-v1';
 export const COMPANY_CAPTURE_FORM = 'company-capture-v1';
 import {publicCaptureConfig, captureShifts, type CaptureCampaignConfig} from './captureCampaignConfig';
-export type CaptureCampaignOption = { id: string; name: string; configuration?: CaptureCampaignConfig | null; form?:import('./captureFormSchema').CaptureForm|null; formRevision?:number|null };
+export type CaptureCampaignOption = { id: string; name: string; configuration?: CaptureCampaignConfig | null; form?:import('./captureFormSchema').CaptureForm|null; unavailableReason?:string; formRevision?:number|null };
 export const companyText = (text: string, name: string) => text.replaceAll('TECH CENTER', name);
 export const techCenterIntro = [
   'Somos TECH CENTER, una empresa peruana especializada en servicios de telemarketing, Contact Center y BPO, que trabaja con empresas nacionales e internacionales.',
@@ -57,7 +57,7 @@ export const optionValue = (option: Option) => typeof option === 'string' ? opti
 export const optionLabel = (option: Option) => typeof option === 'string' ? option : option.label;
 export function selectedCaptureConfig(values: Record<string, unknown>, campaigns: CaptureCampaignOption[]) {
   const campaign=campaigns.find(c=>c.id===values.preferredCampaign);
-  return campaign ? publicCaptureConfig(campaign.configuration) : undefined;
+  return campaign && !campaign.unavailableReason ? publicCaptureConfig(campaign.configuration) : undefined;
 }
 export function changeCaptureAnswer(values: Record<string,string>, key: string, value: string, _campaigns: CaptureCampaignOption[]) {
   const next = {...values, [key]:value};

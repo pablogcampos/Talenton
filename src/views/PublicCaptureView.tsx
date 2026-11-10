@@ -25,6 +25,8 @@ export function PublicCaptureView({ token }: { token: string }) {
   const [active, setActive] = useState(false), [error, setError] = useState(''), [success, setSuccess] = useState(false), [busy, setBusy] = useState(false);
   const [challenge, setChallenge] = useState(''), widget = useRef<HTMLDivElement>(null), widgetId = useRef(''), requestId = useRef(crypto.randomUUID());
   const [data, setData] = useState({ fullName: '', phone: '', email: '', documentType: 'DNI', documentNumber: '', district: '', consent: false, website: '' });
+  const [securityError,setSecurityError]=useState('');
+  const submitting=useRef(false);
   const [sitekey, setSitekey] = useState('');
   const [formId, setFormId] = useState('');
   const [techAnswers, setTechAnswers] = useState<FormAnswers>({});
@@ -48,7 +50,7 @@ export function PublicCaptureView({ token }: { token: string }) {
   };
   useEffect(() => {
     let cancelled = false;
-    setActive(false); setChallenge(''); setError(''); setSuccess(false); setSitekey(''); setStep(0); setStepError('');
+    setActive(false); setSecurityError(''); setChallenge(''); setError(''); setSuccess(false); setSitekey(''); setStep(0); setStepError('');
     setFormId(''); setCompanyName(''); setCampaigns([]); setTechAnswers({}); setSensitiveConsent(false); setData({ fullName: '', phone: '', email: '', documentType: 'DNI', documentNumber: '', district: '', consent: false, website: '' });
     requestId.current = crypto.randomUUID();
     publicCaptureApi<{ turnstileSiteKey?: string; securityReady?: boolean; formId?: string; companyName?:string; campaigns?:CaptureCampaignOption[] }>(token).then(config => {
@@ -68,14 +70,14 @@ export function PublicCaptureView({ token }: { token: string }) {
   useEffect(() => {
     if (!active || !sitekey || step !== 4 || !widget.current) return;
     let cancelled = false;
-    const failed = () => { if (!cancelled) { setChallenge(''); setError('No se pudo cargar la verificación de seguridad. Revisa tu conexión y recarga la página.'); } };
+    const failed = () => { if (!cancelled) { setChallenge(''); setSecurityError('No se pudo cargar la verificación de seguridad. Revisa tu conexión y recarga la página.'); } };
     const init = () => {
       const api = (window as unknown as { turnstile?: Turnstile }).turnstile;
       if (!cancelled && api && widget.current && !widgetId.current) {
         try {
           widgetId.current = api.render(widget.current, {
             sitekey, action: 'capture',
-            callback: (value: string) => { if (!cancelled) { setChallenge(value); setError(''); } },
+            callback: (value: string) => { if (!cancelled) { setChallenge(value); setSecurityError(''); } },
             'expired-callback': () => { if (!cancelled) setChallenge(''); },
             'error-callback': failed,
           });
@@ -114,7 +116,7 @@ export function PublicCaptureView({ token }: { token: string }) {
         {(customForm?.description||companyName)&&<details className="border-b border-slate-100 px-5 py-3 text-sm text-slate-600 sm:px-8"><summary className="cursor-pointer font-medium text-[#143A56]">Información sobre esta postulación</summary><div className="mt-2 space-y-2">{customForm?.title&&<p className="font-semibold">{customForm.title}</p>}{customForm?.description&&<p>{customForm.description}</p>}{companyName&&techCenterIntro.map(paragraph=><p key={paragraph}>{companyText(paragraph,companyName)}</p>)}</div></details>}
         {error && <p role="alert" className="mx-5 mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 sm:mx-8">{error}</p>}
         {success ? <p role="status" className="m-5 rounded-xl bg-emerald-50 p-5 text-emerald-800 sm:m-8">Tu postulación fue registrada correctamente. Gracias por tu interés.</p> : active && formId === COMPANY_CAPTURE_FORM && <form className="p-5 sm:p-8" onSubmit={async e => {
-      e.preventDefault(); if(step!==4){advance();return;} if(busy||!challenge||!selectedConfig)return;setBusy(true);setError('');
+      e.preventDefault(); if(step!==4){advance();return;} if(submitting.current||busy||!challenge||!selectedConfig)return;submitting.current=true;setBusy(true);setError('');
       try{
         const fileIds=new Set(questions?visibleQuestions(questions,techAnswers).filter(q=>q.type==='file').map(q=>q.id):[]);
         await publicCaptureApi(token,{...techAnswers,...(publishedForm?{formRevision:selectedCampaign?.formRevision}:{}),privacyAcknowledged:data.consent,sensitiveConsent:sensitiveAnswered&&sensitiveConsent,website:data.website,turnstileToken:challenge,requestId:requestId.current},Object.fromEntries(Object.entries(files as Record<string,File>).filter(([id])=>fileIds.has(id))));
@@ -126,7 +128,7 @@ export function PublicCaptureView({ token }: { token: string }) {
         if(invalidQuestion)setStep(fieldStep(invalidQuestion.id,invalidQuestion.section));
         const api=(window as unknown as {turnstile?:Turnstile}).turnstile;if(widgetId.current)api?.reset(widgetId.current);setChallenge('');
       }
-      finally{setBusy(false);}
+      finally{submitting.current=false;setBusy(false);}
     }}>
     <nav aria-label="Progreso de postulación" className="mb-7 grid grid-cols-5 gap-1 sm:gap-3">{steps.map((name,index)=><div key={name} aria-current={step===index?'step':undefined} className="min-w-0 text-center"><div className={`mx-auto flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold ${index===step?'bg-sky-700 text-white':index<step?'bg-teal-100 text-teal-800':'bg-slate-100 text-slate-500'}`}>{index+1}</div><p className={`mt-2 text-[10px] leading-tight sm:text-xs ${index===step?'font-bold text-[#143A56]':'text-slate-500'}`}>{name}</p></div>)}</nav>
     <div role="progressbar" aria-label="Progreso del formulario" aria-valuemin={0} aria-valuemax={5} aria-valuenow={step+1} className="mb-6 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-sky-700 transition-all" style={{width:`${(step+1)*20}%`}} /></div>
@@ -141,7 +143,7 @@ export function PublicCaptureView({ token }: { token: string }) {
             {!campaigns.length && <p role="status" className="rounded-lg bg-orange-50 p-3 text-sm">Esta empresa no tiene campañas disponibles para postular en este momento.</p>}
             {techAnswers.preferredCampaign && !selectedConfig && <p role="status" className="rounded-lg bg-orange-50 p-3 text-sm">Esta campaña tiene pendiente la configuración del formulario. Contacta al responsable del enlace o selecciona otra campaña.</p>}
             {selectedCampaign && selectedConfig && <p role="note" className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">Podrás elegir Presencial o Remoto según tu preferencia. Tu elección está sujeta a la disponibilidad de la campaña.</p>}
-            <label className="block text-sm font-semibold">Campaña (*)<select className="mt-2 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-100" required value={String(techAnswers.preferredCampaign||'')} onChange={e=>changeAnswer('preferredCampaign',e.target.value)}><option value="">Selecciona la campaña a la que deseas postular</option>{campaigns.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><span className="mt-1 block text-xs font-normal text-slate-500">Las preguntas se adaptan a la campaña. Cambiarla reinicia las respuestas del formulario.</span></label>
+            <label className="block text-sm font-semibold">Campaña (*)<select className="mt-2 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-100" required value={String(techAnswers.preferredCampaign||'')} onChange={e=>changeAnswer('preferredCampaign',e.target.value)}><option value="">Selecciona la campaña a la que deseas postular</option>{campaigns.map(c=><option key={c.id} value={c.id} disabled={!!c.unavailableReason}>{c.name}{c.unavailableReason?' (no disponible)':''}</option>)}</select><span className="mt-1 block text-xs font-normal text-slate-500">Las preguntas se adaptan a la campaña. Cambiarla reinicia las respuestas del formulario.</span></label>
           </>}
           {selectedConfig&&(questions?<CaptureFormFields key={selectedCampaign?.id} questions={questions} hideCampaign showQuestion={(q:FormQuestion)=>fieldStep(q.id,q.section)===step} values={techAnswers} uploadedFiles={files} onChange={changeAnswer} onFile={(id,file)=>{
             if(file&&file.size>2*1024*1024){setError('Cada adjunto debe pesar como máximo 2 MB.');setFiles(previous=>{const next={...previous};delete next[id];return next;});return;}
@@ -157,8 +159,10 @@ export function PublicCaptureView({ token }: { token: string }) {
           <p className="text-xs italic text-slate-500">{techCenterPrivacyNote}</p>
         </section>}
         <div className="hidden" aria-hidden="true"><input tabIndex={-1} autoComplete="off" value={data.website} onChange={e => setData({ ...data, website: e.target.value })} /></div>
+        {step===4&&error&&<p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error} Tus respuestas siguen en esta página. Revisa el mensaje y vuelve a enviar; espera la confirmación del registro.</p>}
+        {securityError&&<p role="alert" className="mt-4 text-sm text-red-700">{securityError}</p>}
         <div className="mt-7 flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-5">
-          {step>0&&<button type="button" onClick={()=>{if(step===4)setChallenge('');setStep(previous=>previous-1);setStepError('');}} className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-[#143A56] hover:bg-slate-50">Volver</button>}
+          {step>0&&<button type="button" disabled={busy} onClick={()=>{if(step===4)setChallenge('');setStep(previous=>previous-1);setStepError('');}} className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-[#143A56] hover:bg-slate-50">Volver</button>}
           {step<4?<button type="button" onClick={advance} className="rounded-xl bg-[#143A56] px-6 py-3 text-sm font-semibold text-white hover:bg-[#0d2d45]">Continuar →</button>:<><div ref={widget} className="w-full" /><button disabled={busy || !challenge || !selectedConfig} className="rounded-xl bg-[#143A56] px-6 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Registrando…' : 'Enviar postulación'}</button></>}
         </div>
       </div>
