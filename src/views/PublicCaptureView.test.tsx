@@ -14,10 +14,11 @@ it('conserva el error tras renovar captcha y reutiliza requestId al reintentar',
  (window as any).turnstile={render:(_el:any,o:any)=>{options=o;return 'widget';},reset:vi.fn(),remove:vi.fn()};
  const script=document.createElement('script');script.dataset.captureTurnstile='true';document.head.append(script);
  mock.api.mockResolvedValueOnce({formId:COMPANY_CAPTURE_FORM,companyName:'Techcenter',turnstileSiteKey:'test',securityReady:true,campaigns:[{id:'campaign',name:'Campaña',configuration:{minAge:18,maxAge:60,workdays:['Full time'],schedules:['Turno mañana'],modality:'Presencial'}}]}).mockRejectedValueOnce(new Error('Error de guardado')).mockResolvedValueOnce({ok:true});
+ sessionStorage.setItem('talent:capture:draft:v1:'+'a'.repeat(48),JSON.stringify({answers:{preferredCampaign:'campaign',fullName:'Persona Prueba',documentType:'DNI',documentNumber:'12345678',phone:'933984694',email:'test@example.com',district:'Lima'},step:0,requestId:'same-request',revision:null,attachments:[],savedAt:Date.now()}));
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
  try{
   await act(async()=>root.render(<PublicCaptureView token={'a'.repeat(48)}/>));
-  await act(async()=>{const select=host.querySelector('select')!;select.value='campaign';select.dispatchEvent(new Event('change',{bubbles:true}));});
+  expect(host.querySelector('select')!.value).toBe('campaign');
   for(let i=0;i<4;i++)await act(async()=>Array.from(host.querySelectorAll('button')).find(b=>b.textContent?.includes('Continuar'))!.click());
   await act(async()=>options['error-callback']('110200'));
   expect(host.textContent).toContain('dominio no está autorizado');

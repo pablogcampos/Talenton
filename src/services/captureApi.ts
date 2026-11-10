@@ -26,7 +26,7 @@ export async function publicCaptureApi<T>(token: string, input?: object,files?:R
   const timeout=setTimeout(()=>controller.abort(),45000);
   try {
   const result = await fetch(`${base}/api/public/capture/${token}`, { signal:controller.signal, method: input ? 'POST' : 'GET', headers:payload instanceof FormData?{}:{'Content-Type':'application/json'}, ...(payload?{body:payload}:{}) });
-  const data = await result.json(); if (!result.ok) throw new Error(data.message || 'No se pudo enviar la solicitud.');
+  const data = await result.json(); if (!result.ok) throw Object.assign(new Error(data.message || 'No se pudo enviar la solicitud.'),{field:typeof data.field==='string'?data.field:undefined});
   if(input&&data?.ok!==true)throw new Error('No se recibió confirmación del guardado. Vuelve a enviar sin cerrar esta página.');
   return data;
   } catch(error){

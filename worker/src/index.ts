@@ -1304,7 +1304,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   } catch (error) {
     if(env.DATA_PROVIDER!=='firebase'&&error instanceof Error&&error.message==='FIRESTORE_404')return response({message:'NOT_FOUND'},404,headers);
     if (error instanceof SupabaseError) return response({ message: error.code }, error.status, headers);
-    if (error instanceof CaptureError) return response({ message: error.message }, error.status, headers);
+    if (error instanceof CaptureError) return response({ message: error.message, ...(error.field?{field:error.field}:{}) }, error.status, headers);
     const message = error instanceof Error ? error.message : 'INTERNAL_ERROR';
     const status = ['UNAUTHENTICATED', 'INVALID_TOKEN'].includes(message) ? 401
       : ['FORBIDDEN', 'ACCOUNT_DISABLED', 'PROFILE_NOT_FOUND', 'ORIGIN_NOT_ALLOWED'].includes(message) ? 403

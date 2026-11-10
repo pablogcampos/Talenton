@@ -1,3 +1,4 @@
+import {captureIdentityIssue} from '../../shared/captureIdentity';
 import React, { useEffect, useRef, useState } from 'react';
 import { Building2 } from 'lucide-react';
 import { CompanyLogo, companyLogoSource } from '../components/common/CompanyLogo';
@@ -107,9 +108,12 @@ export function PublicCaptureView({ token }: { token: string }) {
     return () => { cancelled = true; clearTimeout(watchdog); script.removeEventListener('load', init); script.removeEventListener('error', scriptFailed); const api = (window as unknown as { turnstile?: Turnstile }).turnstile; if (widgetId.current) api?.remove(widgetId.current); widgetId.current = ''; };
   }, [active, sitekey, step,securityAttempt]);
 
+  const focusField=(id:string)=>{setTimeout(()=>{const el=document.getElementById('capture-'+id)||document.querySelector<HTMLElement>('[name="capture-'+id+'"]');el?.scrollIntoView?.({block:'center',behavior:'smooth'});el?.focus();},0);};
   const advance = () => {
     setStepError('');
     if(step===0&&!selectedConfig){setStepError('Selecciona una campaña disponible para continuar.');return;}
+    const issue=captureIdentityIssue(techAnswers);
+    if(issue&&fieldStep(issue.field)===step){setStepError(issue.message);focusField(issue.field);return;}
     const controls=stepFields.current?.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('input, select, textarea');
     for(const control of controls||[]){
       if(!control.checkValidity()){
@@ -142,8 +146,9 @@ export function PublicCaptureView({ token }: { token: string }) {
       }catch(e){
         const message=e instanceof Error?e.message:'No se pudo enviar.';
         setError(message);
-        const invalidQuestion=questions?.find(q=>message.includes(q.label));
-        if(invalidQuestion)setStep(fieldStep(invalidQuestion.id,invalidQuestion.section));
+        const field=e instanceof Error?(e as Error&{field?:string}).field:undefined;
+        const invalidQuestion=questions?.find(q=>q.id===field||message.includes(q.label));
+        if(invalidQuestion){setStep(fieldStep(invalidQuestion.id,invalidQuestion.section));setStepError(message);focusField(invalidQuestion.id);}
         const api=(window as unknown as {turnstile?:Turnstile}).turnstile;if(widgetId.current)api?.reset(widgetId.current);setChallenge('');
       }
       finally{submitting.current=false;setBusy(false);}

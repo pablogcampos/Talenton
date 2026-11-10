@@ -1,3 +1,4 @@
+import {captureIdentityIssue} from '../../shared/captureIdentity';
 import type { Env } from './index';
 import { TECH_CENTER_FORM, COMPANY_CAPTURE_FORM, validateTechCenterAnswers, type CaptureCampaignOption } from '../../shared/techCenterForm';
 import {effectiveQuestions,validateFormAnswers,validateCaptureForm,defaultCaptureForm,visibleQuestions,sensitiveQuestionIds,type FormAnswers} from '../../shared/captureFormSchema';
@@ -10,7 +11,7 @@ export type Helpers = { token: (env: Env) => Promise<string>; encode: (data: Dat
 export const captureSources = ['Facebook', 'TikTok', 'LinkedIn', 'WhatsApp', 'Pauta pagada', 'Referidos', 'Otros'];
 export const captureStates = ['Nuevo', 'Contactado', 'No responde', 'Interesado', 'No interesado'];
 const defaultPublicCaptureForm = validateCaptureForm(defaultCaptureForm());
-export class CaptureError extends Error { constructor(message: string, public status = 400) { super(message); } }
+export class CaptureError extends Error { constructor(message: string, public status = 400, public field?:string) { super(message); } }
 const text = (v: unknown, max: number) => typeof v === 'string' ? v.normalize('NFKC').trim().replace(/\s+/g, ' ').slice(0, max) : '';
 const digits = (v: unknown) => text(v, 40).replace(/\D/g, '');
 const phone = (v: unknown) => { const n = digits(v); return n.length === 11 && n.startsWith('51') ? n.slice(2) : n; };
@@ -24,9 +25,10 @@ export function captureInput(v: Data, techCenter = false, campaigns?: CaptureCam
   const fullName = text(v.fullName, 120), documentType = text(v.documentType, 20);
   const documentNumber = text(v.documentNumber, 24).toUpperCase().replace(/[\s-]/g, '');
   const normalizedPhone = phone(v.phone), email = text(v.email, 160).toLowerCase(), district = text(v.district, techCenter ? 160 : 80);
-  if (fullName.length < 5 || !fullName.includes(' ') || !(techCenter ? ['DNI', 'CE', 'OTRO'] : ['DNI', 'CE', 'PASAPORTE']).includes(documentType) ||
-    !(documentType === 'DNI' ? /^\d{8}$/.test(documentNumber) : /^[A-Z0-9]{6,20}$/.test(documentNumber)) ||
-    !/^9\d{8}$/.test(normalizedPhone) || (techCenter && !email) || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || district.length < 2 || (!techCenter && v.consent !== true) || v.website) throw new CaptureError('Revisa tus datos y la declaración de privacidad.');
+  const issue=captureIdentityIssue(v,techCenter);
+  if(issue)throw new CaptureError(issue.message,400,issue.field);
+  if(!techCenter&&v.consent!==true)throw new CaptureError('Confirma la declaración de privacidad.',400,'consent');
+  if(v.website)throw new CaptureError('No se pudo validar el envío. Contacta al responsable del enlace.');
   return { fullName, documentType, documentNumber, phone: normalizedPhone, email, district, ...(techCenterAnswers ? { techCenterAnswers } : {}) };
 }
 function allowed(actor: Actor) {
