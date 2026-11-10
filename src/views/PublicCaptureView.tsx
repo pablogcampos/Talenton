@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Building2 } from 'lucide-react';
 import { CompanyLogo, companyLogoSource } from '../components/common/CompanyLogo';
+import {readCaptureDraft,writeCaptureDraft,clearCaptureDraft,captureSecurityMessage} from '../services/captureDraft';
 import { publicCaptureApi } from '../services/captureApi';
 import { TechCenterFields } from '../components/capture/TechCenterFields';
 import {CaptureFormFields} from '../components/capture/CaptureFormFields';
@@ -23,14 +24,17 @@ function fieldStep(id:string,section=''):number {
 }
 export function PublicCaptureView({ token }: { token: string }) {
   const [active, setActive] = useState(false), [error, setError] = useState(''), [success, setSuccess] = useState(false), [busy, setBusy] = useState(false);
-  const [challenge, setChallenge] = useState(''), widget = useRef<HTMLDivElement>(null), widgetId = useRef(''), requestId = useRef(crypto.randomUUID());
+  const [challenge, setChallenge] = useState(''), widget = useRef<HTMLDivElement>(null), widgetId = useRef(''), requestId = useRef<string>(crypto.randomUUID());
   const [data, setData] = useState({ fullName: '', phone: '', email: '', documentType: 'DNI', documentNumber: '', district: '', consent: false, website: '' });
   const [securityError,setSecurityError]=useState('');
   const submitting=useRef(false);
+  const [draftToken,setDraftToken]=useState(''),[draftNotice,setDraftNotice]=useState(''),[draftUnavailable,setDraftUnavailable]=useState(false);
+  const [securityAttempt,setSecurityAttempt]=useState(0);
   const [sitekey, setSitekey] = useState('');
   const [formId, setFormId] = useState('');
   const [techAnswers, setTechAnswers] = useState<FormAnswers>({});
   const [sensitiveConsent,setSensitiveConsent]=useState(false);
+  const [pendingAttachments,setPendingAttachments]=useState<string[]>([]);
   const [files,setFiles]=useState<Record<string,File>>({});
   const [companyName, setCompanyName] = useState('');
   const [campaigns, setCampaigns] = useState<CaptureCampaignOption[]>([]);
@@ -44,7 +48,7 @@ export function PublicCaptureView({ token }: { token: string }) {
   const sensitiveAnswered=!!questions&&visibleQuestions(questions,techAnswers).some(q=>sensitiveQuestionIds.includes(q.id as typeof sensitiveQuestionIds[number])&&Boolean(techAnswers[q.id]));
   const changeAnswer=(key:string,value:string|string[])=>{
     if(key==='preferredCampaign'){
-      setFiles({});setSensitiveConsent(false);setTechAnswers({preferredCampaign:String(value)});
+      setFiles({});setPendingAttachments([]);setSensitiveConsent(false);setTechAnswers({preferredCampaign:String(value)});
       setStepError('');
     }else setTechAnswers(previous=>({...previous,[key]:value}));
   };
@@ -52,7 +56,10 @@ export function PublicCaptureView({ token }: { token: string }) {
     let cancelled = false;
     setActive(false); setSecurityError(''); setChallenge(''); setError(''); setSuccess(false); setSitekey(''); setStep(0); setStepError('');
     setFormId(''); setCompanyName(''); setCampaigns([]); setTechAnswers({}); setSensitiveConsent(false); setData({ fullName: '', phone: '', email: '', documentType: 'DNI', documentNumber: '', district: '', consent: false, website: '' });
-    requestId.current = crypto.randomUUID();
+    const draft=readCaptureDraft(token);
+    requestId.current = draft?.requestId || crypto.randomUUID();
+    setDraftToken(token);setDraftUnavailable(false);setDraftNotice('');setPendingAttachments(draft?.attachments||[]);
+    if(draft){setTechAnswers(draft.answers);setStep(draft.step);setDraftNotice('Recuperamos tus respuestas pendientes. Revisa los datos y vuelve a confirmar las autorizaciones.'+(draft.attachments.length?' Vuelve a seleccionar tus archivos adjuntos: '+draft.attachments.join(', ')+'.':''));}
     publicCaptureApi<{ turnstileSiteKey?: string; securityReady?: boolean; formId?: string; companyName?:string; campaigns?:CaptureCampaignOption[] }>(token).then(config => {
       if (cancelled) return;
       const key = config.turnstileSiteKey || import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
@@ -63,14 +70,23 @@ export function PublicCaptureView({ token }: { token: string }) {
         setError('Formulario pendiente de configuración de seguridad. Contacta al responsable del enlace.');
         return;
       }
+      if(draft){const campaign=config.campaigns?.find(c=>c.id===draft.answers.preferredCampaign);if(!campaign||(campaign.formRevision??null)!==draft.revision){setStep(0);setDraftNotice('Recuperamos tus respuestas. La campaña o el formulario cambió; revisa todos los pasos antes de enviar. Si adjuntaste archivos, vuelve a seleccionarlos.');}}
       setSitekey(key);
     }).catch(e => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [token]);
+  useEffect(()=>{
+    if(!active||draftToken!==token)return;
+    if(success){clearCaptureDraft(token);return;}
+    if(!Object.keys(techAnswers).length)return;
+    setDraftUnavailable(!writeCaptureDraft(token,{answers:techAnswers,step,requestId:requestId.current,revision:selectedCampaign?.formRevision??null,attachments:[...new Set([...pendingAttachments,...Object.values(files).map(f=>f.name)])]}));
+  },[active,draftToken,token,success,techAnswers,step,selectedCampaign?.formRevision,files,pendingAttachments]);
   useEffect(() => {
     if (!active || !sitekey || step !== 4 || !widget.current) return;
     let cancelled = false;
-    const failed = () => { if (!cancelled) { setChallenge(''); setSecurityError('No se pudo cargar la verificación de seguridad. Revisa tu conexión y recarga la página.'); } };
+    const failed = (code?:string) => { if (!cancelled) { setChallenge(''); setSecurityError(captureSecurityMessage(typeof code==='string'?code:undefined)); } };
+    const scriptFailed=()=>failed();
+    const watchdog=setTimeout(()=>{if(!widgetId.current)failed();},15000);
     const init = () => {
       const api = (window as unknown as { turnstile?: Turnstile }).turnstile;
       if (!cancelled && api && widget.current && !widgetId.current) {
@@ -86,10 +102,10 @@ export function PublicCaptureView({ token }: { token: string }) {
     };
     const existing = document.querySelector<HTMLScriptElement>('script[data-capture-turnstile]');
     const script = existing || document.createElement('script');
-    script.addEventListener('load', init); script.addEventListener('error', failed);
+    script.addEventListener('load', init); script.addEventListener('error', scriptFailed);
     if (!existing) { script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; script.async = true; script.dataset.captureTurnstile = 'true'; document.head.appendChild(script); } else init();
-    return () => { cancelled = true; script.removeEventListener('load', init); script.removeEventListener('error', failed); const api = (window as unknown as { turnstile?: Turnstile }).turnstile; if (widgetId.current) api?.remove(widgetId.current); widgetId.current = ''; };
-  }, [active, sitekey, step]);
+    return () => { cancelled = true; clearTimeout(watchdog); script.removeEventListener('load', init); script.removeEventListener('error', scriptFailed); const api = (window as unknown as { turnstile?: Turnstile }).turnstile; if (widgetId.current) api?.remove(widgetId.current); widgetId.current = ''; };
+  }, [active, sitekey, step,securityAttempt]);
 
   const advance = () => {
     setStepError('');
@@ -114,13 +130,15 @@ export function PublicCaptureView({ token }: { token: string }) {
           <div><h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Postula con nosotros</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Completa tu información para que podamos conocer tu perfil y disponibilidad.</p><div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500"><span>Tiempo estimado: {Math.max(4,Math.ceil((questions?.length||24)/3))} min</span><span>Los campos obligatorios están marcados con (*)</span></div></div>
         </header>
         {(customForm?.description||companyName)&&<details className="border-b border-slate-100 px-5 py-3 text-sm text-slate-600 sm:px-8"><summary className="cursor-pointer font-medium text-[#143A56]">Información sobre esta postulación</summary><div className="mt-2 space-y-2">{customForm?.title&&<p className="font-semibold">{customForm.title}</p>}{customForm?.description&&<p>{customForm.description}</p>}{companyName&&techCenterIntro.map(paragraph=><p key={paragraph}>{companyText(paragraph,companyName)}</p>)}</div></details>}
+        {!success&&active&&<p role="status" className="mx-5 mt-4 text-sm text-slate-600 sm:mx-8">{draftUnavailable?'Tu navegador no permite guardar el borrador. No recargues ni cierres esta página; usa Reintentar verificación.':'Tus respuestas se guardan temporalmente en esta pestaña durante 4 horas para recuperarlas al recargar. Esto no envía tu postulación. Los archivos deben seleccionarse nuevamente al recargar.'}</p>}
+        {!success&&draftNotice&&<p role="status" className="mx-5 mt-3 rounded-xl bg-sky-50 p-3 text-sm sm:mx-8">{draftNotice}</p>}
         {error && <p role="alert" className="mx-5 mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 sm:mx-8">{error}</p>}
         {success ? <p role="status" className="m-5 rounded-xl bg-emerald-50 p-5 text-emerald-800 sm:m-8">Tu postulación fue registrada correctamente. Gracias por tu interés.</p> : active && formId === COMPANY_CAPTURE_FORM && <form className="p-5 sm:p-8" onSubmit={async e => {
       e.preventDefault(); if(step!==4){advance();return;} if(submitting.current||busy||!challenge||!selectedConfig)return;submitting.current=true;setBusy(true);setError('');
       try{
         const fileIds=new Set(questions?visibleQuestions(questions,techAnswers).filter(q=>q.type==='file').map(q=>q.id):[]);
         await publicCaptureApi(token,{...techAnswers,...(publishedForm?{formRevision:selectedCampaign?.formRevision}:{}),privacyAcknowledged:data.consent,sensitiveConsent:sensitiveAnswered&&sensitiveConsent,website:data.website,turnstileToken:challenge,requestId:requestId.current},Object.fromEntries(Object.entries(files as Record<string,File>).filter(([id])=>fileIds.has(id))));
-        setSuccess(true);setFiles({});
+        clearCaptureDraft(token);setSuccess(true);setFiles({});
       }catch(e){
         const message=e instanceof Error?e.message:'No se pudo enviar.';
         setError(message);
@@ -160,7 +178,7 @@ export function PublicCaptureView({ token }: { token: string }) {
         </section>}
         <div className="hidden" aria-hidden="true"><input tabIndex={-1} autoComplete="off" value={data.website} onChange={e => setData({ ...data, website: e.target.value })} /></div>
         {step===4&&error&&<p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error} Tus respuestas siguen en esta página. Revisa el mensaje y vuelve a enviar; espera la confirmación del registro.</p>}
-        {securityError&&<p role="alert" className="mt-4 text-sm text-red-700">{securityError}</p>}
+        {securityError&&<div className="mt-4"><p role="alert" className="text-sm text-red-700">{securityError}</p><button type="button" className="mt-2 rounded-xl border border-slate-300 px-4 py-2 text-sm" onClick={()=>{setChallenge('');setSecurityError('');if(!(window as unknown as {turnstile?:Turnstile}).turnstile)document.querySelector('script[data-capture-turnstile]')?.remove();setSecurityAttempt(n=>n+1);}}>Reintentar verificación</button></div>}
         <div className="mt-7 flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-5">
           {step>0&&<button type="button" disabled={busy} onClick={()=>{if(step===4)setChallenge('');setStep(previous=>previous-1);setStepError('');}} className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-[#143A56] hover:bg-slate-50">Volver</button>}
           {step<4?<button type="button" onClick={advance} className="rounded-xl bg-[#143A56] px-6 py-3 text-sm font-semibold text-white hover:bg-[#0d2d45]">Continuar →</button>:<><div ref={widget} className="w-full" /><button disabled={busy || !challenge || !selectedConfig} className="rounded-xl bg-[#143A56] px-6 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Registrando…' : 'Enviar postulación'}</button></>}
