@@ -925,7 +925,7 @@ export const TalentProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const recordOjtDailyMetricForParticipant = async (candidateId: string, metric: OjtDailyMetric) => {
     const trainingId = trainingIdForCandidate(candidateId);
-    await workerApi(`/api/trainings/${encodeURIComponent(trainingId)}/participants/${encodeURIComponent(candidateId)}/ojt/daily`, { method: 'POST', body: JSON.stringify({ date: metric.date, attendance: metric.attendance ?? 'PRESENTE', hoursManaged: metric.hoursWorked, sales: metric.sales, ahtSeconds: metric.ahtSeconds, qaScore: metric.qaScore, calls: metric.calls, leads: metric.leads, conversions: metric.conversions, feedback: metric.coachFeedback, observations: metric.observations }) });
+    await workerApi(`/api/trainings/${encodeURIComponent(trainingId)}/participants/${encodeURIComponent(candidateId)}/ojt/daily`, { method: 'POST', body: JSON.stringify({ date: metric.date, grossSales: metric.grossSales, netSales: metric.netSales, ojtDays: metric.ojtDays, attendance: metric.attendance, hoursManaged: metric.hoursWorked, sales: metric.sales, ahtSeconds: metric.ahtSeconds, qaScore: metric.qaScore, calls: metric.calls, leads: metric.leads, conversions: metric.conversions, feedback: metric.coachFeedback, observations: metric.observations }) });
   };
 
   const extendCohortOjt = async (cohortId: string, additionalDays: number, reason?: string) => {

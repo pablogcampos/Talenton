@@ -1153,4 +1153,25 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect(after.campaignId).toBe(target.data.id);expect(after.selection.stage).toBe('NUEVO');
   expect((await call('/api/selection/candidates/'+personId+'/transfer','POST',input)).status).toBe(409);
  });
+ it('OJT guarda cuatro indicadores, conserva calidad cero y no bloquea asistencia ni aprobación',async()=>{
+  const group=(await db.query('select * from talent.training_groups where id=$1',[groupId])).rows[0];
+  const participant=(await db.query('select p.* from talent.participants p join talent.applications a on a.company_id=p.company_id and a.id=p.application_id where p.group_id=$1 and a.person_id=$2',[groupId,personId])).rows[0];
+  const path='/api/trainings/'+groupId+'/participants/'+personId;
+  await db.query("update talent.training_groups set status='EN_OJT' where id=$1",[groupId]);
+  await db.query("update talent.participants set status='EN_OJT',ojt_status='EN_OJT',training_approved=false where id=$1",[participant.id]);
+  const metric={date:'2026-11-29',grossSales:7,netSales:5,ojtDays:3,qaScore:0};
+  expect((await call(path+'/ojt/daily','POST',{...metric,netSales:-1},trainer)).status).toBe(400);
+  expect((await call(path+'/ojt/daily','POST',metric,trainer)).status).toBe(201);
+  const c=(await call('/api/bootstrap')).data.candidates.find((c:any)=>c.id===personId);
+  expect(c.ojt.dailyMetrics.find((m:any)=>m.date===metric.date)).toMatchObject({grossSales:7,netSales:5,ojtDays:3,qaScore:0});
+  const day='2026-11-29';
+  vi.useFakeTimers({toFake:['Date']});
+  try{vi.setSystemTime(new Date(day+'T14:30:00Z'));expect((await call(path+'/attendance','POST',{date:day,status:'PRESENTE',attendance:'PRESENTE'},trainer)).status).toBe(201);}finally{vi.useRealTimers();}
+  expect((await call(path+'/ojt/result','POST',{status:'OJT_APROBADO'},trainer)).status).toBe(201);
+  await db.query("update talent.participants set status='EN_OJT',ojt_status='EN_OJT' where id=$1",[participant.id]);
+
+  expect((await call(path+'/ojt/result','POST',{status:'OJT_APROBADO'},trainer)).status).toBe(201);
+  await db.query('update talent.training_groups set status=$2 where id=$1',[groupId,group.status]);
+ });
+
 });

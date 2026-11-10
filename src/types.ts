@@ -373,6 +373,9 @@ export interface TrainingEvaluation {
 }
 
 export interface OjtDailyMetric {
+  grossSales?: number;
+  netSales?: number;
+  ojtDays?: number;
   date: string;
   dayNumber: number;
   attendance?: TrainingAttendanceStatus;

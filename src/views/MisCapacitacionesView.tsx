@@ -1,3 +1,4 @@
+import {OjtMetricModal,OjtMetricsTable} from '../components/training/OjtMetrics';
 import { OffersPanel } from './LaborOffersView';
 import { trainingDayNumber } from '../../shared/trainingRules';
 import { TrainingPreparation } from '../components/training/TrainingPreparation';
@@ -91,7 +92,8 @@ export const MisCapacitacionesView: React.FC = () => {
     finally { setSaving(false); }
   };
 
-  const addOjtMetric = async (candidate: CandidateRecord) => { if (saving) return; const hoursRaw = window.prompt('Horas gestionadas'); if (hoursRaw === null) return; const salesRaw = window.prompt('Resultados / ventas'); if (salesRaw === null) return; const hours = Number(hoursRaw); const sales = Number(salesRaw); if (!(hours > 0) || sales < 0) { setActionError('Ingresa valores válidos.'); return; } setSaving(true); try { await recordOjtDailyMetricForParticipant(candidate.id, { date: today, dayNumber: 1, attendance: 'PRESENTE', hoursWorked: hours, sales }); } catch (error) { setActionError(getWorkerErrorMessage(error, 'No se pudo registrar la métrica OJT.')); } finally { setSaving(false); } };
+  const [metricTarget,setMetricTarget]=useState<CandidateRecord|null>(null);
+  const addOjtMetric = async (candidate:CandidateRecord)=>{setMetricTarget(candidate);};
 
   if (!selected) return <AssignedList assigned={assigned} candidates={scopedCandidates} today={today} pendingOjt={pendingOjt} onOpen={cohort => { setWorkspaceId(cohort.id); setTab('RESUMEN'); setFollowingToday(true); setAttendanceDate(today); }} />;
 
@@ -115,6 +117,7 @@ export const MisCapacitacionesView: React.FC = () => {
         {tab === 'RESULTADO' && <TrainingFinalPanel participants={participants} saving={saving} onAlta={sendToTalent} />}
       </div>
     </section>
+    {metricTarget&&<OjtMetricModal onClose={()=>setMetricTarget(null)} onSave={metric=>recordOjtDailyMetricForParticipant(metricTarget.id,metric)}/>}
     {unlockOpen && <UnlockModal cohort={selected} date={attendanceDate} error={actionError} reason={unlockReason} setReason={setUnlockReason} saving={saving} onClose={() => setUnlockOpen(false)} onSubmit={submitUnlock} />}
   </div>;
 };
@@ -132,7 +135,7 @@ const OjtPanel: React.FC<{participants: CandidateRecord[]; saving: boolean; onSt
  const ready = candidate.training?.status === 'PENDIENTE_OJT';
  return <article key={candidate.id} className="rounded-xl border p-4"><h3 className="font-semibold">{candidate.fullName}</h3>
  <p className="text-sm text-slate-600">{approved ? 'OJT aprobado' : active ? 'En OJT' : ready ? 'Pendiente a OJT' : 'Etapa teórica pendiente'} · {candidate.ojt?.dailyMetrics?.length ?? 0} jornadas</p>
- <div className="mt-3 flex flex-wrap gap-2"><button disabled={saving || !ready} onClick={() => onStart(candidate)} className="rounded border px-3 py-2 disabled:opacity-50">Iniciar OJT</button>
+ <OjtMetricsTable metrics={candidate.ojt?.dailyMetrics||[]}/><div className="mt-3 flex flex-wrap gap-2"><button disabled={saving || !ready} onClick={() => onStart(candidate)} className="rounded border px-3 py-2 disabled:opacity-50">Iniciar OJT</button>
  <button disabled={saving || !active} onClick={() => onAdd(candidate)} className="rounded border px-3 py-2 disabled:opacity-50">Registrar avance</button>
  <button disabled={saving || !active} onClick={() => onApprove(candidate)} className="rounded bg-[#143c55] px-3 py-2 text-white disabled:opacity-50">Aprobar OJT</button></div></article>;
 })}</div></section>;

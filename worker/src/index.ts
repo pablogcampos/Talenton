@@ -683,7 +683,9 @@ async function ojtParticipant(request: Request, env: Env, actor: Profile, traini
     if (training.status === 'PENDIENTE_OJT') await firestore(env, `trainings/${trainingId}`, 'PATCH', {fields: fields({status:'EN_OJT',updatedAt:now,updatedBy:actor.uid})});
   } else if (action === 'daily') {
     if (participant.status !== 'EN_OJT' || ojt.status !== 'EN_OJT') throw new Error('INVALID_OJT_STATUS');
-    const hours = numberValue(input.hoursManaged); const sales = numberValue(input.sales); if (hours <= 0 || sales < 0 || typeof input.date !== 'string') throw new Error('INVALID_OJT_METRIC');
+    const simplified=input.grossSales!==undefined||input.netSales!==undefined||input.ojtDays!==undefined;
+    if(simplified&&(['grossSales','netSales','ojtDays'].some(k=>typeof input[k]!=='number'||!Number.isSafeInteger(input[k])||Number(input[k])<(k==='ojtDays'?1:0))||typeof input.qaScore!=='number'||!Number.isFinite(input.qaScore)||input.qaScore<0||input.qaScore>100))throw new Error('INVALID_OJT_METRIC');
+    const hours = numberValue(input.hoursManaged); const sales = numberValue(simplified?input.grossSales:input.sales); if ((!simplified&&hours <= 0) || sales < 0 || typeof input.date !== 'string') throw new Error('INVALID_OJT_METRIC');
     const history = Array.isArray(ojt.dailyMetrics) ? ojt.dailyMetrics : []; if (history.some(item => isRecord(item) && item.date === input.date)) throw new Error('OJT_DAY_ALREADY_RECORDED');
     const extra: Record<string, number> = {};
     for (const key of ['ahtSeconds', 'qaScore', 'calls', 'leads', 'conversions']) {
@@ -693,12 +695,12 @@ async function ojtParticipant(request: Request, env: Env, actor: Profile, traini
       extra[key] = value;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(input.date)) || !Number.isFinite(Date.parse(String(input.date)+'T12:00:00Z')) || !Number.isInteger(sales)) throw new Error('INVALID_OJT_METRIC');
-    const metric = { ...extra, id: `OJT-${crypto.randomUUID()}`, date: input.date, attendance: input.attendance, hoursManaged: hours, sales, sph: Number((sales / hours).toFixed(2)), spd: Number(sales.toFixed(2)), feedback: input.feedback, observations: input.observations, trainerId: actor.uid, trainerName: actor.displayName, recordedAt: now };
+    const metric = { ...extra, ...(simplified?{grossSales:input.grossSales,netSales:input.netSales,ojtDays:input.ojtDays,dayNumber:input.ojtDays}:{}), id: `OJT-${crypto.randomUUID()}`, date: input.date, attendance: input.attendance, hoursManaged: hours, sales, sph: hours>0?Number((sales / hours).toFixed(2)):0, spd: Number(sales.toFixed(2)), feedback: input.feedback, observations: input.observations, trainerId: actor.uid, trainerName: actor.displayName, recordedAt: now };
     const updated = { ...participant, ojt: { ...ojt, dailyMetrics: [...history, metric] }, updatedAt: now };
     await firestore(env, `trainings/${trainingId}/participants/${candidateId}`, 'PATCH', { fields: fields(updated) });
     await syncCandidateTraining(env, candidateId, updated, actor);
   } else {
-    if (participant.status !== 'EN_OJT' || ojt.status !== 'EN_OJT' || !(theoryCompleted(participant) || (participant.trainingApproved === true && trainingEvaluationsApproved(training.evaluationsConfig, participant.evaluations)))) throw new Error('PARTICIPANT_NOT_READY_FOR_OJT');
+    if (participant.status !== 'EN_OJT' || ojt.status !== 'EN_OJT') throw new Error('PARTICIPANT_NOT_READY_FOR_OJT');
     const status = input.status; if (typeof status !== 'string' || !['OJT_APROBADO', 'OJT_NO_APROBADO', 'DESERTO', 'NSP', 'REPROGRAMADO'].includes(status)) throw new Error('INVALID_OJT_STATUS');
     const next = { ...ojt, status, resultDate: limaDay(), traceability: [...traceability, { date: now, userId: actor.uid, userName: actor.displayName, status, reason: typeof input.reason === 'string' ? input.reason : '' }] };
     const updated = { ...participant, status, ojt: next, updatedAt: now };
