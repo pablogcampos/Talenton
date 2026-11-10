@@ -35,7 +35,7 @@ jobs:
         run: npm run check
 
       - name: Probar envío y confirmación de captación
-        run: npx vitest run src/components/training/OjtMetrics.test.tsx src/services/captureDraft.test.ts src/services/captureApi.test.ts src/views/PublicCaptureView.test.tsx
+        run: npx vitest run src/components/modals/CandidateCreateModal.test.tsx src/services/workerApi.test.ts src/components/training/OjtMetrics.test.tsx src/services/captureDraft.test.ts src/services/captureApi.test.ts src/views/PublicCaptureView.test.tsx
 
       - name: Build
         run: npm run build
