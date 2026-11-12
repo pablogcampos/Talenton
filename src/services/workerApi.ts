@@ -58,6 +58,7 @@ const WORKER_ERROR_MESSAGES: Record<string, string> = {
   COMPANY_LOOKUP_FAILED: 'No se pudo identificar la empresa del enlace. No se eliminó; actualiza la página e inténtalo nuevamente.',
   UNIFIED_READ_FAILED: 'No se pudo cargar la vista conjunta. Intenta actualizar; no se muestran resultados parciales.',
   'Worker API no está configurada o no existe sesión.': 'El servicio administrativo no está configurado o tu sesión venció.',
+  BOOTSTRAP_REFRESH_TIMEOUT: 'La actualización tardó demasiado. Comprueba tu conexión y reintenta.',
   WORKER_REQUEST_TIMEOUT: 'No se pudo confirmar el guardado a tiempo. Conservamos los datos; verifica si el postulante aparece antes de reintentar.',
   WORKER_NETWORK_UNREACHABLE: 'No se pudo conectar con el servicio. Verifica tu conexión e inténtalo nuevamente.',
   FIREBASE_TOKEN_UNAVAILABLE: 'No se pudo validar tu sesión. Vuelve a iniciar sesión e inténtalo nuevamente.',
@@ -137,12 +138,13 @@ export function getWorkerErrorMessage(error: unknown, fallback = 'No se pudo com
 }
 
 export async function workerApi<T>(path: string, init: RequestInit = {}, companyId?: string): Promise<T> {
+  if(path==='/api/bootstrap')return boundedCandidateRequest(signal=>workerRequest<T>(path,{...init,signal},companyId),'BOOTSTRAP_REFRESH_TIMEOUT');
   if(path==='/api/candidates'&&init.method==='POST')return boundedCandidateRequest(signal=>workerRequest<T>(path,{...init,signal},companyId));
   return workerRequest<T>(path,init,companyId);
 }
-async function boundedCandidateRequest<T>(run:(signal:AbortSignal)=>Promise<T>):Promise<T>{
+async function boundedCandidateRequest<T>(run:(signal:AbortSignal)=>Promise<T>,timeoutCode='WORKER_REQUEST_TIMEOUT'):Promise<T>{
  const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined;
- try{return await Promise.race([run(controller.signal),new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>{reject(new WorkerApiError(408,'WORKER_REQUEST_TIMEOUT'));controller.abort();},45000);})]);}finally{clearTimeout(timer);}
+ try{return await Promise.race([run(controller.signal),new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>{reject(new WorkerApiError(408,timeoutCode));controller.abort();},45000);})]);}finally{clearTimeout(timer);}
 }
 async function workerRequest<T>(path: string, init: RequestInit = {}, companyId?: string): Promise<T> {
   const token = await authenticatedToken();
@@ -165,7 +167,9 @@ async function workerRequest<T>(path: string, init: RequestInit = {}, companyId?
     throw new WorkerApiError(response.status, message);
   }
   const payload = await response.json() as T;
-  if (init.method && !['GET','HEAD'].includes(init.method.toUpperCase())) window.dispatchEvent(new Event('talent:data-changed'));
+  if (init.method && !['GET','HEAD'].includes(init.method.toUpperCase())) {
+    window.dispatchEvent(new Event(path.startsWith('/api/voicebot/')&&!path.endsWith('/convert')?'talent:voicebot-changed':'talent:data-changed'));
+  }
   return payload;
 }
 
