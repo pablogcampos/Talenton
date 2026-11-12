@@ -1088,6 +1088,11 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect((await call(path,'PATCH',{action:'TAKE',version:2},analyst)).status).toBe(409);
   expect((await call(path,'PATCH',{action:'UPDATE',version:2,status:'CONTACTADO',notes:'Sin permiso'},analyst)).status).toBe(403);
   const saved=await call(path,'PATCH',{action:'UPDATE',version:2,status:'CONTACTADO',notes:'Entrevista coordinada'},recruiter);expect(saved.status).toBe(200);expect(saved.data.management_notes).toBe('Entrevista coordinada');
+  expect(saved.data.history.map((e:any)=>e.action)).toEqual(['TAKE','UPDATE']);
+  expect(saved.data.history[0].actor_name).toBe('Voicebot test');
+  expect(Date.parse(saved.data.history[1].created_at)).toBeGreaterThanOrEqual(Date.parse(saved.data.history[0].created_at));
+  const reloaded=await call('/api/voicebot/leads?search=Lead','GET',undefined,recruiter);expect(reloaded.data.items[0].history).toEqual(saved.data.history);
+  await expect(db.exec("begin; set local role authenticated; select public.talent_voicebot_timeline(null::public.voicebot_leads);")).rejects.toThrow();await db.exec('rollback');
   expect((await call('/api/voicebot/leads?status=NUEVO','GET',undefined,recruiter)).data.total).toBe(0);
   expect((await db.query('select * from public.voicebot_lead_history where lead_id=$1',[lead.id])).rows).toHaveLength(2);
   await db.exec('begin; set local role authenticated;');
