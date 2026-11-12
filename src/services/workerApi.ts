@@ -15,6 +15,8 @@ export class WorkerApiError extends Error {
 const WORKER_ERROR_MESSAGES: Record<string, string> = {
   VOICEBOT_CHANGED: 'Otro usuario actualizó este lead. Actualiza la bandeja y abre nuevamente su detalle.',
   VOICEBOT_TAKEN: 'Este lead ya fue tomado. Actualiza la bandeja para ver al responsable.',
+  VOICEBOT_OUTCOME_REQUIRED: 'Selecciona un motivo válido para la tipificación elegida.',
+  VOICEBOT_CALLBACK_REQUIRED: 'Selecciona una fecha y hora futuras para devolver la llamada (hora de Perú).',
   VOICEBOT_INVALID: 'Revisa los datos de gestión del lead.',
   VOICEBOT_NOT_FOUND: 'El lead ya no está disponible.',
   VOICEBOT_FAILED: 'No se pudo cargar o guardar el lead. Intenta actualizar.',

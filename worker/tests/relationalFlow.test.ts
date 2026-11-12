@@ -1087,7 +1087,7 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect((await call(path,'PATCH',{action:'TAKE',version:1},analyst)).status).toBe(409);
   expect((await call(path,'PATCH',{action:'TAKE',version:2},analyst)).status).toBe(409);
   expect((await call(path,'PATCH',{action:'UPDATE',version:2,status:'CONTACTADO',notes:'Sin permiso'},analyst)).status).toBe(403);
-  const saved=await call(path,'PATCH',{action:'UPDATE',version:2,status:'CONTACTADO',notes:'Entrevista coordinada'},recruiter);expect(saved.status).toBe(200);expect(saved.data.management_notes).toBe('Entrevista coordinada');
+  const saved=await call(path,'PATCH',{action:'UPDATE',version:2,status:'CONTACTADO',outcome:'ACEPTA_PROPUESTA',notes:'Entrevista coordinada'},recruiter);expect(saved.status).toBe(200);expect(saved.data.management_notes).toBe('Entrevista coordinada');
   expect(saved.data.history.map((e:any)=>e.action)).toEqual(['TAKE','UPDATE']);
   expect(saved.data.history[0].actor_name).toBe('Voicebot test');
   expect(Date.parse(saved.data.history[1].created_at)).toBeGreaterThanOrEqual(Date.parse(saved.data.history[0].created_at));
@@ -1095,6 +1095,26 @@ describe('Transición relacional PostgreSQL 17',()=>{
   await expect(db.exec("begin; set local role authenticated; select public.talent_voicebot_timeline(null::public.voicebot_leads);")).rejects.toThrow();await db.exec('rollback');
   expect((await call('/api/voicebot/leads?status=NUEVO','GET',undefined,recruiter)).data.total).toBe(0);
   expect((await db.query('select * from public.voicebot_lead_history where lead_id=$1',[lead.id])).rows).toHaveLength(2);
+  expect(saved.data.outcome).toBe('ACEPTA_PROPUESTA');expect(saved.data.history[1].outcome).toBe('ACEPTA_PROPUESTA');
+  for(const body of [
+   {status:'CONTACTADO'}, {status:'CONTACTADO',outcome:'NO_RESPONDE'},
+   {status:'NO_CONTACTADO',outcome:'NO_APTO'}, {status:'REPROGRAMADO'},
+   {status:'REPROGRAMADO',callbackAt:'2020-01-01T14:00:00Z'}, {status:'REPROGRAMADO',callbackAt:'invalid'},
+   {status:'REPROGRAMADO',callbackAt:'2099-01-01T09:00'},
+   {status:'EN_GESTION'}, {status:'DESCARTADO'},
+  ])expect((await call(path,'PATCH',{action:'UPDATE',version:3,...body},recruiter)).status).toBe(400);
+  // The legacy RPC must not bypass required reasons.
+  await expect(db.query("select public.talent_voicebot_manage($1,$2,3,'UPDATE','CONTACTADO','')",[recruiter,lead.id])).rejects.toThrow();
+  let version=3;
+  for(const [status,outcome] of [['CONTACTADO','NO_ACEPTA_PROPUESTA'],['CONTACTADO','NO_APTO'],['NO_CONTACTADO','NO_RESPONDE'],['NO_CONTACTADO','CORTA_LLAMADA']]){
+   const res=await call(path,'PATCH',{action:'UPDATE',version,status,outcome},recruiter);expect(res.status).toBe(200);expect(res.data.outcome).toBe(outcome);version=res.data.version;
+  }
+  const scheduled=await call(path,'PATCH',{action:'UPDATE',version,status:'REPROGRAMADO',callbackAt:'2099-01-01T09:30:00-05:00'},recruiter);
+  expect(scheduled.status).toBe(200);expect(Date.parse(scheduled.data.callback_at)).toBe(Date.parse('2099-01-01T14:30:00Z'));expect(scheduled.data.outcome).toBeNull();
+  expect((await call('/api/voicebot/leads?status=REPROGRAMADO','GET',undefined,recruiter)).data.total).toBe(1);
+  const resolved=await call(path,'PATCH',{action:'UPDATE',version:scheduled.data.version,status:'CONTACTADO',outcome:'ACEPTA_PROPUESTA'},recruiter);
+  expect(resolved.status).toBe(200);expect(resolved.data.callback_at).toBeNull();expect(resolved.data.history.at(-1).previous_callback_at).toBe(scheduled.data.callback_at);
+  expect(resolved.data.history.at(-2).callback_at).toBe(scheduled.data.callback_at);
   await db.exec('begin; set local role authenticated;');
   await db.query("select set_config('request.jwt.claim.sub',$1,true)",[trainer]);expect((await db.query('select * from public.voicebot_leads')).rows).toHaveLength(0);
   await db.query("select set_config('request.jwt.claim.sub',$1,true)",[recruiter]);expect((await db.query('select * from public.voicebot_leads')).rows).toHaveLength(1);await db.exec('rollback');
