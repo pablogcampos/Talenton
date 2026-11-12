@@ -8,6 +8,9 @@ export async function handleVoicebot(request:Request,env:SupabaseEnv){
   const page=Number(url.searchParams.get('page')||0),search=url.searchParams.get('search')||'',status=url.searchParams.get('status')||'';
   if(!Number.isInteger(page)||page<0||page>100000||search.length>200||!['','NUEVO','EN_GESTION','CONTACTADO','NO_CONTACTADO','REPROGRAMADO','DESCARTADO'].includes(status))throw new SupabaseError(400,'VOICEBOT_INVALID');
   args={...args,p_page:page,p_search:search,p_status:status};
+ }else if(request.method==='POST'&&/^\/api\/voicebot\/leads\/[a-f0-9-]{36}\/convert$/.test(url.pathname)){
+  const data=await request.json() as any;if(!data||!Number.isSafeInteger(data.version)||typeof data.companyId!=='string'||!data.companyId)throw new SupabaseError(400,'VOICEBOT_INVALID');
+  name='talent_voicebot_convert';args={...args,p_id:url.pathname.split('/').at(-2),p_version:data.version,p_company:data.companyId};
  }else if(request.method==='PATCH'&&/^\/api\/voicebot\/leads\/[a-f0-9-]{36}$/.test(url.pathname)){
   const text=await request.text();if(text.length>16000)throw new SupabaseError(413,'VOICEBOT_INVALID');
   let data:any;try{data=JSON.parse(text);}catch{throw new SupabaseError(400,'VOICEBOT_INVALID');}

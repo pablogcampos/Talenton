@@ -214,7 +214,7 @@ export class RelationalRuntime {
   if(root==='candidates'&&!child){
    let identityId:string|undefined;
    const documentNumber=String(d.dni||d.documentNumber||'').trim().toUpperCase();
-   if(this.env.ORG_ENABLED==='true'&&!this.find('persons',id)&&documentNumber){
+   if(this.env.ORG_ENABLED==='true'&&(!this.find('persons',id)||!this.find('persons',id)?.document_number)&&documentNumber){
     if(!this.env.IDENTITY_HASH_SECRET)throw new SupabaseError(503,'IDENTITY_SERVICE_NOT_CONFIGURED');
     const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(this.env.IDENTITY_HASH_SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
     const signed=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(JSON.stringify(['PE',String(d.documentType||'DNI').toUpperCase(),documentNumber])));

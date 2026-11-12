@@ -1,3 +1,4 @@
+import {VoicebotCandidateEdit} from './VoicebotCandidateEdit';
 import { candidateAvailability } from '../../utils/candidateAvailability';
 import React, { useEffect, useState } from 'react';
 import { formatCandidateExperience, hasExperienceAnswer } from '../../utils/candidateExperience';
@@ -498,7 +499,7 @@ export const Candidate360Modal: React.FC<Candidate360ModalProps> = ({
 
             {/* TAB 2: DATOS PERSONALES */}
             {activeTab === 'datos' && (
-              <div className="space-y-6">
+              <div className="space-y-6"><VoicebotCandidateEdit candidate={candidate}/>
                 <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-4">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
                     <User className="w-4 h-4 text-sky-600" />

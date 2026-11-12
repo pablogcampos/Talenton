@@ -1139,6 +1139,17 @@ describe('Transición relacional PostgreSQL 17',()=>{
  expect((await db.query("select action from public.voicebot_lead_history where lead_id=$1 and action='CONVERT'",[lead.id])).rows).toHaveLength(1);
  });
 
+ it('quick conversion permits missing DNI, is idempotent and remains editable',async()=>{
+ const recruiter='60000000-0000-4000-8000-000000000001';
+ const lead=(await db.query("insert into public.voicebot_leads(external_id,phone,full_name) values('ci-quick','999111444','Lead Incompleto') returning *")).rows[0];const path='/api/voicebot/leads/'+lead.id;
+ expect((await call(path+'/convert','POST',{version:1,companyId:'tenant'},recruiter)).status).not.toBe(200);
+ await call(path,'PATCH',{action:'TAKE',version:1},recruiter);await call(path,'PATCH',{action:'UPDATE',version:2,status:'CONTACTADO',outcome:'ACEPTA_PROPUESTA'},recruiter);
+ const converted=await call(path+'/convert','POST',{version:3,companyId:'tenant'},recruiter);expect(converted.status).toBe(200);expect(converted.data.candidate_id).toBeTruthy();
+ const retry=await call(path+'/convert','POST',{version:3,companyId:'tenant'},recruiter);expect(retry.status).toBe(200);expect(retry.data.candidate_id).toBe(converted.data.candidate_id);
+ const row=(await db.query('select * from talent.persons where id=$1',[converted.data.candidate_id])).rows[0];expect(row.document_number).toBeNull();expect(row.capture_only).toBe(true);expect(row.owner_id).toBe(recruiter);
+ const updated=await call('/api/candidates/'+converted.data.candidate_id+'/personal-data','PATCH',{dni:'98112235',age:26,fullName:'Nombre Completado',email:'test@example.com'},recruiter);expect(updated.status).toBe(200);
+ expect((await db.query('select document_number from talent.persons where id=$1',[converted.data.candidate_id])).rows[0].document_number).toBe('98112235');
+ });
  it('formador cesa con historial; solo el cesado queda exento de firma al cerrar teoría',async()=>{
   const ids:string[]=[];
   for(const dni of ['97111001','97111002']){const r=await call('/api/candidates','POST',{dni,fullName:'Cese '+dni,phone:'999888001',campaignId,recruiterId:admin,source:'Otro'});expect(r.status).toBe(201);ids.push(r.data.id);expect((await call('/api/candidates/'+r.data.id+'/stage','POST',{stage:'APTO_CAPACITACION'})).status).toBe(200);}
