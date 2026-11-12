@@ -523,6 +523,7 @@ export interface CampaignCall {
 }
 
 export interface CandidateRecord extends CandidatePreferences {
+    voicebotLeadId?: string;
   companyId?: string;
   id: string; // Único en todo el ciclo de vida
   captureOnly?: boolean; // Registrado por captación, pendiente de vincular a convocatoria

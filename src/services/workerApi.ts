@@ -13,6 +13,10 @@ export class WorkerApiError extends Error {
 }
 
 const WORKER_ERROR_MESSAGES: Record<string, string> = {
+  SUPABASE_REQUEST_FAILED: 'No se pudo validar tu sesión en Supabase. Intenta actualizar; si continúa, vuelve a iniciar sesión.',
+  VOICEBOT_CONVERSION_FORBIDDEN: 'Solo el responsable del lead puede convertirlo.',
+  VOICEBOT_ALREADY_CONVERTED: 'Este lead ya fue convertido a candidato. Actualiza la bandeja.',
+  VOICEBOT_CONVERSION_NOT_READY: 'El lead debe estar Contactado y Acepta propuesta para convertirlo.',
   VOICEBOT_CHANGED: 'Otro usuario actualizó este lead. Actualiza la bandeja y abre nuevamente su detalle.',
   VOICEBOT_TAKEN: 'Este lead ya fue tomado. Actualiza la bandeja para ver al responsable.',
   VOICEBOT_OUTCOME_REQUIRED: 'Selecciona un motivo válido para la tipificación elegida.',

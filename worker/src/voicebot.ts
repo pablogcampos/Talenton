@@ -1,7 +1,7 @@
 import {relationalSession} from './supabaseSession';
 import {supabaseServerHeaders,SupabaseError,type SupabaseEnv} from './supabase';
 export async function handleVoicebot(request:Request,env:SupabaseEnv){
- const actor=await relationalSession(request,env),url=new URL(request.url);
+ const actor=await relationalSession(request,{...env,ORG_ENABLED:'false'}),url=new URL(request.url);
  let name='talent_voicebot_list',args:Record<string,unknown>={p_actor:actor.authUserId};
  if(request.method==='GET'&&url.pathname==='/api/voicebot/feed'){name='talent_voicebot_feed';
  }else if(request.method==='GET'&&url.pathname==='/api/voicebot/leads'){

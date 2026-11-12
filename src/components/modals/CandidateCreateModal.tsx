@@ -23,12 +23,13 @@ interface CandidateCreateModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultCampaignId?: string;
+  voicebotLead?: {id:string;full_name:string;phone:string;district:string;experience:string};
 }
 
 export const CandidateCreateModal: React.FC<CandidateCreateModalProps> = ({
   isOpen,
   onClose,
-  defaultCampaignId
+  defaultCampaignId, voicebotLead
 }) => {
   const { 
     addCandidate, 
@@ -67,6 +68,7 @@ export const CandidateCreateModal: React.FC<CandidateCreateModalProps> = ({
   }, [isOpen, defaultCampaignId, currentUser.id, currentUser.role]);
   useEffect(() => { if (isOpen) setAge(''); }, [isOpen]);
 
+  useEffect(()=>{if(isOpen&&voicebotLead){setSource('Otro');setFirstName(voicebotLead.full_name);setLastName('');setPhone(voicebotLead.phone.replace(/\D/g,'').replace(/^51(?=\d{9}$)/,''));setDistrict(voicebotLead.district||'');setObservations(voicebotLead.experience?'Experiencia declarada: '+voicebotLead.experience:'');}},[isOpen,voicebotLead?.id]);
   if (!isOpen) return null;
 
   const selectedCampaign = campaigns.find(campaign => campaign.id === campaignId);
@@ -120,6 +122,7 @@ export const CandidateCreateModal: React.FC<CandidateCreateModalProps> = ({
     setDuplicateWarning(null);setIsSubmitting(true);
     try {
       const res = createdCandidateId ? {success:true,candidate:{id:createdCandidateId},message:undefined} : await addCandidate({
+      voicebotLeadId: voicebotLead?.id,
       dni: dni.trim(),
       fullName: `${firstName.trim()} ${lastName.trim()}`,
       firstName: firstName.trim(),
@@ -185,6 +188,7 @@ export const CandidateCreateModal: React.FC<CandidateCreateModalProps> = ({
 
             {duplicateWarning && <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" /><div><p className="font-bold">Revisa la información</p><p className="mt-0.5 text-2xs">{duplicateWarning}</p></div></div>}
 
+            {voicebotLead&&<p className="text-sm text-slate-600">Datos del voicebot precargados. Revisa nombres y apellidos, completa DNI, edad y convocatoria para convertir.</p>}
             <section className="space-y-4 border-b border-slate-200 pb-5">
               <h4 className="flex items-center gap-2 text-sm font-bold text-[#143A56]"><UserPlus className="h-5 w-5 text-blue-700" />1. Datos del postulante</h4>
               <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2">

@@ -300,7 +300,7 @@ async function createCandidate(request: Request, env: Env, actor: Profile) {
     recruiterName = String(recruiter.displayName ?? recruiter.name ?? recruiter.username ?? 'Reclutador');
   }
   const traceability = [{ id: `TR-${crypto.randomUUID()}`, date, time, user: actor.displayName, previousStage: 'N/A', newStage: 'NUEVO', observation: 'Postulación registrada.' }];
-  const allowedFields = ['fullName', 'firstName', 'lastName', 'email', 'phone', 'city', 'district', 'address', 'birthDate', 'age', 'campaignCode', 'campaignName', 'jobProfile', 'source', 'cvUrl', 'observationsGeneral'];
+  const allowedFields = ['fullName', 'firstName', 'lastName', 'email', 'phone', 'city', 'district', 'address', 'birthDate', 'age', 'campaignCode', 'campaignName', 'jobProfile', 'source', 'cvUrl', 'observationsGeneral', 'voicebotLeadId'];
   const safeInput: Record<string, unknown> = { ...candidatePreferences(input) };
   for (const field of allowedFields) if (input[field] !== undefined) safeInput[field] = input[field];
   const data = { ...safeInput, id, dni, companyId: actor.companyId, campaignId, recruiterId, recruiterName, analystId: campaignData.assignedAnalystId ?? '', analystName: campaignData.assignedAnalystName ?? '', applicationDate: typeof input.applicationDate === 'string' ? input.applicationDate : date, currentProcess: 'SELECCION', currentStage: 'SELECCION', selection: { callId: campaignId, stage: 'NUEVO', status: 'ACTIVO', traceability, contactHistory: [], evaluations: [], evaluationsList: [] }, createdAt: now.toISOString(), createdBy: actor.uid };
