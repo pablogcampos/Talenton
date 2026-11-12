@@ -9,8 +9,15 @@ export function VoicebotNotifications(){
  const [count,setCount]=useState(0),[connected,setConnected]=useState(false);
  const audio=useRef<AudioContext|null>(null),pending=useRef(false);
  const play=()=>{const ctx=audio.current;if(!pending.current||ctx?.state!=='running')return;pending.current=false;
-  // Three distinct pulses; bounded volume and duration, no mute preference.
-  for(let i=0;i<3;i++){const oscillator=ctx.createOscillator(),gain=ctx.createGain(),at=ctx.currentTime+i*.45;oscillator.connect(gain);gain.connect(ctx.destination);oscillator.frequency.value=i%2?1040:740;gain.gain.setValueAtTime(.2,at);gain.gain.exponentialRampToValueAtTime(.001,at+.35);oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};oscillator.start(at);oscillator.stop(at+.35);}
+  // Radar ascendente: same waveform as the preview selected by the user.
+  const rate=ctx.sampleRate,buffer=ctx.createBuffer(1,Math.ceil(2.5*rate),rate),samples=buffer.getChannelData(0);
+  for(const [start,length,frequency] of [[0,.45,520],[.65,.45,660],[1.3,.65,880]]){
+   for(let i=Math.ceil(start*rate);i<Math.min(samples.length,(start+length)*rate);i++){
+    const x=i/rate-start,envelope=Math.min(1,x/.015)*Math.min(1,(length-x)/.08),phase=2*Math.PI*(frequency+400*x/length)*x;
+    samples[i]+=.28*envelope*(Math.sin(phase)+.15*Math.sin(2*phase));
+   }
+  }
+  const source=ctx.createBufferSource();source.buffer=buffer;source.connect(ctx.destination);source.onended=()=>source.disconnect();source.start();
  };
  useEffect(()=>{if(!allowed)return;const unlock=()=>{try{audio.current??=new AudioContext();void audio.current.resume().then(play).catch(()=>{});}catch{/* Browser requires a user gesture. */}};
   unlock();window.addEventListener('pointerdown',unlock);window.addEventListener('keydown',unlock);
