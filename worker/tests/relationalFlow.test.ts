@@ -1231,4 +1231,24 @@ describe('Transición relacional PostgreSQL 17',()=>{
   await db.query('update talent.training_groups set status=$2 where id=$1',[groupId,group.status]);
  });
 
+ it('dashboard measures all leads, first take, SLA boundary and Peru receipt dates',async()=>{
+  const recruiter='60000000-0000-4000-8000-000000000001';
+  const ids:string[]=[];
+  for(let i=0;i<52;i++){const row=(await db.query("insert into public.voicebot_leads(external_id,phone,received_at) values($1,'999111222','2030-01-02T05:00:00Z') returning id",['dashboard-'+i])).rows[0];ids.push(row.id);}
+  for(const [i,seconds] of [[0,600],[1,601]]){
+   await db.query("update public.voicebot_leads set owner_auth_id=$2,owner_name='CI Recruiter',status='EN_GESTION' where id=$1",[ids[i],recruiter]);
+   await db.query("insert into public.voicebot_lead_history(lead_id,actor_auth_id,action,previous_status,new_status,notes,created_at) values($1,$2,'TAKE','NUEVO','EN_GESTION','','2030-01-02T05:00:00Z'::timestamptz+$3*interval '1 second')",[ids[i],recruiter,seconds]);
+  }
+  await db.query("insert into public.voicebot_lead_history(lead_id,actor_auth_id,action,previous_status,new_status,notes,created_at) values($1,$2,'TAKE','NUEVO','EN_GESTION','','2030-01-02T06:00:00Z')",[ids[0],recruiter]);
+  await db.query("insert into public.voicebot_leads(external_id,phone,received_at) values('dashboard-before','999111222','2030-01-02T04:59:59Z'),('dashboard-after','999111222','2030-01-03T05:00:00Z')");
+  const path='/api/voicebot/dashboard?from=2030-01-02&to=2030-01-02';
+  expect((await call(path,'GET',undefined,trainer)).status).toBe(403);
+  const report=await call(path,'GET',undefined,recruiter);expect(report.status).toBe(200);
+  expect(report.data.summary).toMatchObject({total:52,unassigned:50,assigned_measured:2,within_sla:1,late_assigned:1,avg_assignment_seconds:600.5});
+  expect(report.data.recruiters).toHaveLength(1);expect(report.data.recruiters[0].total).toBe(2);
+  const empty=await call('/api/voicebot/dashboard?from=2031-01-01&to=2031-01-01');
+  expect(empty.data.summary.total).toBe(0);expect(empty.data.summary.avg_assignment_seconds).toBeNull();
+  expect((await call('/api/voicebot/dashboard?from=2031-01-02&to=2031-01-01')).status).toBe(400);
+ });
+
 });

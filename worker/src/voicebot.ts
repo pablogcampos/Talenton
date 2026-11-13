@@ -4,6 +4,10 @@ export async function handleVoicebot(request:Request,env:SupabaseEnv){
  const actor=await relationalSession(request,{...env,ORG_ENABLED:'false'}),url=new URL(request.url);
  let name='talent_voicebot_list',args:Record<string,unknown>={p_actor:actor.authUserId};
  if(request.method==='GET'&&url.pathname==='/api/voicebot/feed'){name='talent_voicebot_feed';
+ }else if(request.method==='GET'&&url.pathname==='/api/voicebot/dashboard'){
+  const from=url.searchParams.get('from')||null,to=url.searchParams.get('to')||null;
+  if([from,to].some(v=>v&&!/^\d{4}-\d{2}-\d{2}$/.test(v))||(from&&to&&from>to))throw new SupabaseError(400,'VOICEBOT_INVALID');
+  name='talent_voicebot_dashboard';args={...args,p_from:from,p_to:to};
  }else if(request.method==='GET'&&url.pathname==='/api/voicebot/leads'){
   const page=Number(url.searchParams.get('page')||0),search=url.searchParams.get('search')||'',status=url.searchParams.get('status')||'';
   if(!Number.isInteger(page)||page<0||page>100000||search.length>200||!['','NUEVO','EN_GESTION','CONTACTADO','NO_CONTACTADO','REPROGRAMADO','DESCARTADO'].includes(status))throw new SupabaseError(400,'VOICEBOT_INVALID');
