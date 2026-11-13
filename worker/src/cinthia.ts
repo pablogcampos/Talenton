@@ -28,6 +28,14 @@ export async function handleCinthia(request:Request,env:CinthiaEnv){
  }
  if(url.pathname.startsWith('/api/public/cinthia/'))throw new SupabaseError(404,'CINTHIA_NOT_FOUND');
  const actor=await relationalSession(request,{...env,ORG_ENABLED:'false'});
+ if(url.pathname==='/api/cinthia/settings'){
+  if(request.method==='GET')return rpc('talent_cinthia_settings',{p_actor:actor.authUserId});
+  if(request.method!=='PUT')throw new SupabaseError(405,'METHOD_NOT_ALLOWED');
+  const text=await request.text();if(text.length>10000)throw new SupabaseError(413,'CINTHIA_INVALID');
+  let data:any;try{data=JSON.parse(text);}catch{throw new SupabaseError(400,'CINTHIA_INVALID');}
+  if(!Array.isArray(data?.questions)||!Number.isInteger(data?.revision))throw new SupabaseError(400,'CINTHIA_INVALID');
+  return rpc('talent_cinthia_settings',{p_actor:actor.authUserId,p_questions:data.questions,p_revision:data.revision});
+ }
  if(request.method==='GET'&&url.pathname==='/api/cinthia'){
   if(url.search.length>2000)throw new SupabaseError(400,'CINTHIA_INVALID');
   return {...await rpc('talent_cinthia_list',{p_actor:actor.authUserId,p_filters:Object.fromEntries(url.searchParams)}),serviceAvailable:available,preview};

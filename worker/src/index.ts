@@ -1,4 +1,4 @@
-import {cinthiaSocket} from './cinthiaLive';
+import {VoiceFault,cinthiaSocket} from './cinthiaLive';
 import {handleCinthia,cinthiaPreview} from './cinthia';
 import {handleVoicebot} from './voicebot';
 import { limaDay, trainingDayNumber, unlockIsActive, evaluationDefinition, validEvaluationDefinition, trainingEvaluationsApproved } from '../../shared/trainingRules';
@@ -1361,7 +1361,7 @@ const worker={async fetch(request:Request,env:Env):Promise<Response>{
   if(request.method!=='OPTIONS' && (path==='/api/cinthia'||path.startsWith('/api/cinthia/')||path.startsWith('/api/public/cinthia/'))){
    const headers={...cors(request,env),'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
    try{if(!originAllowed(request,env))throw new SupabaseError(403,'ORIGIN_NOT_ALLOWED');if(path==='/api/public/cinthia/live')return cinthiaSocket(request,env,cinthiaPreview(request,env));return response(await handleCinthia(request,env),200,headers);}
-   catch(e){return response({message:e instanceof SupabaseError?e.code:'CINTHIA_FAILED'},e instanceof SupabaseError?e.status:500,headers);}
+   catch(e){return response({message:e instanceof SupabaseError||e instanceof VoiceFault?e.code:'CINTHIA_FAILED'},e instanceof SupabaseError||e instanceof VoiceFault?e.status||500:500,headers);}
   }
   if(request.method!=='OPTIONS' && path.startsWith('/api/voicebot/')){
    try{

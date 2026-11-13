@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import pg from 'pg';
-const names=['202611130003_cinthia.sql','202611130004_cinthia_live.sql'];
+const names=['202611130003_cinthia.sql','202611130004_cinthia_live.sql','202611130005_cinthia_interview_controls.sql'];
 const execute=process.argv.includes('--execute');
 const api=new URL(process.env.SUPABASE_URL),database=new URL(process.env.SUPABASE_DATABASE_URL),project=api.hostname.split('.')[0];
 if(project!=='gvwaqlvphvfzhnhlnuuv'||api.hostname!==project+'.supabase.co'||!(database.hostname==='db.'+project+'.supabase.co'||database.hostname.endsWith('.pooler.supabase.com')&&decodeURIComponent(database.username)==='postgres.'+project))throw Error('PROJECT_ROUTING_MISMATCH');
@@ -22,7 +22,7 @@ try{
   report.push({name,status:applied?'already_applied':execute?'applied':'pending',sha256:hash});
  }
  if(execute||report.every(r=>r.status==='already_applied')){
-  const check=(await client.query("select has_function_privilege('service_role','public.talent_cinthia_session(text,text,jsonb,boolean)','execute') and not has_function_privilege('anon','public.talent_cinthia_session(text,text,jsonb,boolean)','execute') as installed")).rows[0];
+  const check=(await client.query("select has_function_privilege('service_role','public.talent_cinthia_session(text,text,jsonb,boolean)','execute') and not has_function_privilege('anon','public.talent_cinthia_session(text,text,jsonb,boolean)','execute') and has_function_privilege('service_role','public.talent_cinthia_settings(uuid,jsonb,integer)','execute') and not has_function_privilege('authenticated','public.talent_cinthia_settings(uuid,jsonb,integer)','execute') and not has_table_privilege('anon','public.cinthia_settings','select') as installed")).rows[0];
   if(!check.installed)throw Error('MIGRATION_CHECK_FAILED');
  }
  await client.query(execute?'commit':'rollback');if(execute)await client.query("notify pgrst,'reload schema'");

@@ -124,3 +124,21 @@ it('does not take an active session or retry invalid credentials',async()=>{
  await expect(claimSession(busy,()=>false,()=>{},async()=>{})).rejects.toThrow('CINTHIA_SESSION_BUSY');expect(busy).toHaveBeenCalledTimes(13);
  const invalid=vi.fn(async()=>{throw new SupabaseError(404,'CINTHIA_NOT_FOUND');});await expect(claimSession(invalid,()=>false,()=>{},async()=>{})).rejects.toThrow('CINTHIA_NOT_FOUND');expect(invalid).toHaveBeenCalledTimes(1);
 });
+it('admin config is versioned and snapshotted; silence pause resumes without losing progress',async()=>{
+ const config=()=>rpc('talent_cinthia_settings',{p_actor:admin});const first=await config();
+ await expect(rpc('talent_cinthia_settings',{p_actor:recruiter})).rejects.toMatchObject({code:'42501'});
+ await expect(rpc('talent_cinthia_settings',{p_actor:trainer,p_questions:['Test question'],p_revision:first.revision})).rejects.toMatchObject({code:'42501'});
+ await expect(rpc('talent_cinthia_settings',{p_actor:admin,p_questions:[],p_revision:first.revision})).rejects.toThrow('CINTHIA_INVALID');
+ const configured=await rpc('talent_cinthia_settings',{p_actor:admin,p_questions:['¿Cuál es tu experiencia?'],p_revision:first.revision});
+ await expect(rpc('talent_cinthia_settings',{p_actor:admin,p_questions:['Pregunta nueva'],p_revision:first.revision})).rejects.toThrow('CINTHIA_SETTINGS_CONFLICT');
+ const lid=(await db.query<{id:string}>("insert into public.voicebot_leads(external_id,phone) values('pause-ci','999111222') returning id")).rows[0].id;
+ await db.query("insert into public.cinthia_invitations(lead_id,token,prepared_by,test_mode) values($1,$2,$3,true)",[lid,'e'.repeat(64),admin]);
+ const action=(a:string,data={})=>rpc('talent_cinthia_session',{p_token:'e'.repeat(64),p_action:a,p_test:true,p_data:{clientHash:'f'.repeat(64),connectionId:'70000000-0000-4000-8000-000000000099',...data}});
+ const begun=await action('BEGIN',{consent:true,consentVersion:'cinthia-voice-v1',model:'test'});expect(begun.questions).toEqual(configured.questions);
+ await rpc('talent_cinthia_settings',{p_actor:admin,p_questions:['Otra pregunta de prueba'],p_revision:configured.revision});
+ const claimed=await action('CLAIM');expect(claimed.questions).toEqual(configured.questions);await action('READY');
+ await action('SAVE',{flow:{index:0,retry:1,consumed:10,results:[]},transcript:[{speaker:'candidate',text:'Respuesta parcial',complete:false}]});await action('INTERRUPT',{code:'SILENCE_TIMEOUT'});
+ await db.query("update public.cinthia_sessions set deadline=now()-interval '1 minute' where id=$1",[begun.id]);
+ const resumed=await action('BEGIN',{consent:true,consentVersion:'cinthia-voice-v1',model:'test'});expect(resumed.flow.retry).toBe(1);expect(resumed.transcript[0].text).toBe('Respuesta parcial');expect(Date.parse(resumed.deadline)).toBeGreaterThan(Date.now());
+ await action('CLAIM');await expect(action('FINISH',{turnComplete:true})).rejects.toThrow('CINTHIA_INCOMPLETE');
+});
