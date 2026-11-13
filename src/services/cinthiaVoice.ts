@@ -1,3 +1,4 @@
+export function formatVoiceDiagnostic(d:{source?:string;code?:string;status?:number;reference?:string;at?:string}){return ['Origen: '+(d.source||'No informado'),'Código: '+(d.code||'CAUSE_NOT_REPORTED'),d.status!==undefined?'Estado: '+d.status:'',d.code==='CAUSE_NOT_REPORTED'||d.code==='SOCKET_CLOSED'?'La causa exacta no fue informada; este evento no demuestra una pérdida de internet.':'',d.reference?'Referencia: '+d.reference:'',d.at?'Hora: '+d.at:''].filter(Boolean).join(' · ');}
 export type VoiceState='available'|'speaking'|'listening'|'processing'|'finished'|'error';
 export type VoiceSegment={id:string;speaker:'candidate'|'cinthia';text:string;complete:boolean;at:string;source:'gemini_live'};
 export type VoiceEvent={type:'state';state:VoiceState}|{type:'question';text:string}|{type:'transcript';segments:VoiceSegment[]}|{type:'saved';receiptId:string}|{type:'error';message:string};
@@ -27,12 +28,14 @@ export const cinthiaVoice={
    clearTimeout(reconnectTimer);if(ws){ws.onclose=null;ws.onmessage=null;try{ws.close();}catch{}}
    ready=false;manualClosing=false;turnEnded=false;
    const url=new URL(base+'/api/public/cinthia/live');url.protocol=url.protocol==='https:'?'wss:':'ws:';
-   const socket=new WebSocket(url);ws=socket;let settled=false;
-   const timeout=setTimeout(()=>{reject(Error('La conexión de voz tardó demasiado.'));socket.close();},80000);
+   const socket=new WebSocket(url);ws=socket;let settled=false,reported='',reference='';
+   const report=(d:Parameters<typeof formatVoiceDiagnostic>[0])=>{reported=formatVoiceDiagnostic({...d,at:d.at||new Date().toISOString()});onEvent({type:'error',message:reported});return reported;};
+   const timeout=setTimeout(()=>{reject(Error(report({source:'Navegador',code:'CONNECTION_TIMEOUT_80000MS'})));socket.close();},80000);
    socket.onopen=()=>socket.send(JSON.stringify({type:'auth',token,key}));
    socket.onmessage=e=>{
     if(closed||ws!==socket)return;
     let m:any;try{m=JSON.parse(e.data);}catch{return;}
+    if(m.type==='diagnosticReference')reference=m.reference;
     if(m.type==='recovering'){onEvent({type:'error',message:'Recuperando la conexión anterior. Espera unos segundos; tus respuestas guardadas se conservan.'});}
     if(m.type==='ready'){onEvent({type:'error',message:''});clearTimeout(timeout);settled=true;ready=true;sessionId=m.sessionId;deadline=Date.parse(m.deadline);onEvent({type:'transcript',segments:m.transcript||[]});const previous=[...(m.transcript||[])].reverse().find((s:VoiceSegment)=>s.speaker==='cinthia');if(previous)onEvent({type:'question',text:previous.text});state(muted?'available':'listening');resolve();}
     if(m.type==='audio'&&ctx){try{const raw=atob(m.data),bytes=Uint8Array.from(raw,c=>c.charCodeAt(0)),rate=Number(/rate=(\d+)/.exec(m.mimeType)?.[1]||24000);if(bytes.length%2||rate<8000||rate>48000)return;const b=ctx.createBuffer(1,bytes.length/2,rate),v=new DataView(bytes.buffer),samples=b.getChannelData(0);for(let i=0;i<samples.length;i++)samples[i]=v.getInt16(i*2,true)/32768;const s=ctx.createBufferSource();s.buffer=b;s.connect(ctx.destination);playing.add(s);turnEnded=false;state('speaking');s.onended=()=>{playing.delete(s);s.disconnect();if(!playing.size&&turnEnded)state(muted?'available':'listening');};const when=Math.max(ctx.currentTime,nextAudio);s.start(when);nextAudio=when+b.duration;}catch{onEvent({type:'error',message:'No se pudo reproducir el audio.'});}}
@@ -40,16 +43,17 @@ export const cinthiaVoice={
     if(m.type==='transcript'){if(!playing.size&&m.segments.at(-1)?.speaker==='candidate')state('processing');onEvent({type:'transcript',segments:m.segments});const last=[...m.segments].reverse().find((s:VoiceSegment)=>s.speaker==='cinthia');if(last)onEvent({type:'question',text:last.text});}
     if(m.type==='turnComplete'){turnEnded=true;if(!playing.size)state(muted?'available':'listening');}
     if(m.type==='saved'){clearTimeout(finishTimer);sessionStorage.removeItem(keyName(token));state('finished');onEvent({type:'saved',receiptId:m.receiptId});finishResolve?.({receiptId:m.receiptId});finishResolve=undefined;finishReject=undefined;close();}
-    if(m.type==='finishRejected'){clearTimeout(finishTimer);finishReject?.(Error(m.message));finishResolve=undefined;finishReject=undefined;state(muted?'available':'listening');}
+    if(m.type==='finishRejected'){clearTimeout(finishTimer);finishReject?.(Error(m.diagnostic?report(m.diagnostic):m.message));finishResolve=undefined;finishReject=undefined;state(muted?'available':'listening');}
     if(m.type==='error'&&m.message!=='COMPLETED'){
-     if(['SESSION_TIME_LIMIT','CINTHIA_SESSION_EXPIRED','INVALID_AUTH','CINTHIA_INVALID_STATE'].includes(m.message)){manualClosing=true;onEvent({type:'error',message:'La sesión ya no está disponible. Se conservan las transcripciones guardadas; no se marcó como completada.'});state('error');stream?.getTracks().forEach(t=>t.stop());}
-     if(!settled){clearTimeout(timeout);reject(Error(m.message));}
+     report(m.diagnostic||{source:'Servidor',code:m.message});
+     if(['SESSION_TIME_LIMIT','CINTHIA_SESSION_EXPIRED','INVALID_AUTH','CINTHIA_INVALID_STATE'].includes(m.message)){manualClosing=true;state('error');stream?.getTracks().forEach(t=>t.stop());}
+     if(!settled){clearTimeout(timeout);reject(Error(reported));}
     }
    };
-   socket.onerror=()=>{if(!settled){clearTimeout(timeout);reject(Error('No se pudo conectar el servicio de voz.'));}};
-   socket.onclose=()=>{clearTimeout(timeout);ready=false;stopAudio();if(!settled)reject(Error('La conexión de voz se cerró.'));if(!closed&&!manualClosing){state('error');if(retries<3&&Date.now()<deadline){reconnectTimer=setTimeout(()=>void reconnect().catch(()=>{}),3000);}else onEvent({type:'error',message:'Se interrumpió la conexión. Reintenta; tus respuestas guardadas se conservan.'});}};
+   socket.onerror=()=>{if(!reported)report({source:'WebSocket del navegador',code:'CAUSE_NOT_REPORTED'});if(!settled){clearTimeout(timeout);reject(Error(reported));}};
+   socket.onclose=e=>{clearTimeout(timeout);ready=false;stopAudio();if(!closed&&!reported)report({source:'WebSocket del navegador',code:'SOCKET_CLOSED',status:e.code,reference:reference||sessionId||undefined});if(!settled)reject(Error(reported));if(!closed&&!manualClosing){state('error');if(retries<3&&Date.now()<deadline){reconnectTimer=setTimeout(()=>void reconnect().catch(()=>{}),3000);}}};
   });
-  const reconnect=async()=>{if(reconnecting||closed)return;if(Date.now()>=deadline)throw Error('CINTHIA_SESSION_EXPIRED');reconnecting=true;retries++;try{await connect();}catch(e){onEvent({type:'error',message:'No se pudo recuperar la conexión. Puedes reintentar.'});throw e;}finally{reconnecting=false;}};
+  const reconnect=async()=>{if(reconnecting||closed)return;if(Date.now()>=deadline)throw Error('CINTHIA_SESSION_EXPIRED');reconnecting=true;retries++;try{await connect();}catch(e){onEvent({type:'error',message:e instanceof Error?e.message:'Causa no informada al reconectar.'});throw e;}finally{reconnecting=false;}};
   try{
    ctx=new AudioContext();await ctx.resume();stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
    const started=await post('/start',{key,consent:true,consentVersion});sessionId=started.sessionId;deadline=Date.parse(started.deadline);

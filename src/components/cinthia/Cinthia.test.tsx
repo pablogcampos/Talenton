@@ -47,3 +47,10 @@ it('preparing opens individual WhatsApp and records opening, never confirms send
  const host=document.createElement('div'),root=createRoot(host),row={id:'lead',state:'NOT_SENT',can_manage:true,phone:'999111222',full_name:'Prueba'} as any;
  try{await act(async()=>root.render(<CinthiaRowActions row={row} preview onDetail={()=>{}} onMessage={()=>{}} onChanged={()=>{}}/>));await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Enviar evaluación')!.click());expect(replace).toHaveBeenCalledWith(expect.stringContaining('https://wa.me/51999111222?text='));expect(mock.api.mock.calls.map(c=>JSON.parse(c[1].body).action)).toEqual(['PREPARE','WHATSAPP_OPENED']);}finally{await act(async()=>root.unmount());}
 });
+it('portal preserves a diagnostic when starting voice rejects',async()=>{
+ mock.pub.mockResolvedValue({status:'PENDING',serviceAvailable:true,consentVersion:'cinthia-voice-v1'});
+ const diagnostic='Origen: Gemini · Código: RESOURCE_EXHAUSTED · Estado: 429 · Referencia: trace-123';
+ vi.spyOn(cinthiaVoice,'start').mockRejectedValue(new Error(diagnostic));
+ const host=document.createElement('div'),root=createRoot(host);document.body.append(host);
+ try{await act(async()=>root.render(<PublicCinthiaView token={'a'.repeat(64)}/>));await act(async()=>host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Comenzar entrevista')!.click());expect(host.textContent).toContain(diagnostic);expect(host.textContent).not.toContain('¡Entrevista completada!');}finally{await act(async()=>root.unmount());host.remove();}
+});

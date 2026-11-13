@@ -2,9 +2,16 @@ import {SupabaseError,supabaseServerHeaders,type SupabaseEnv} from './supabase';
 export type CinthiaLiveEnv=SupabaseEnv & {GEMINI_API_KEY?:string;CINTHIA_LIVE_MODEL?:string;CINTHIA_LIVE_ENABLED?:string;CINTHIA_LIVE_VALIDATED?:string;CINTHIA_DEV_PREVIEW?:string};
 export const liveModel=(env:CinthiaLiveEnv)=>env.CINTHIA_LIVE_MODEL||'gemini-3.8-live';
 export const liveAvailable=(env:CinthiaLiveEnv,preview:boolean)=>!!env.GEMINI_API_KEY&&env.CINTHIA_LIVE_ENABLED==='true'&&(preview||env.CINTHIA_LIVE_VALIDATED==='true');
+export class VoiceFault extends Error {
+ constructor(public source:string, public code:string, public status?:number){super(code);}
+}
+export function voiceDiagnostic(error:unknown,source='Servidor'){
+ const e=error as any;
+ return {source:e instanceof VoiceFault?e.source:source,code:e instanceof VoiceFault?e.code:e instanceof SupabaseError?e.code:e instanceof Error&&/^[A-Z][A-Z0-9_]+$/.test(e.message)?e.message:'CAUSE_NOT_REPORTED',...(e instanceof VoiceFault&&e.status!==undefined?{status:e.status}:{}),exception:e instanceof Error?e.name:'UnknownError'};
+}
 export async function cinthiaRpc(env:SupabaseEnv,name:string,args:Record<string,unknown>){
  const r=await fetch(env.SUPABASE_URL!.replace(/\/$/,'')+'/rest/v1/rpc/'+name,{method:'POST',headers:supabaseServerHeaders(env),body:JSON.stringify(args),signal:AbortSignal.timeout(12000)});
- const d=await r.json() as any;if(!r.ok)throw new SupabaseError(d.code==='42501'?403:d.message==='CINTHIA_NOT_FOUND'?404:409,/^CINTHIA_[A-Z_]+$/.test(d.message||'')?d.message:'CINTHIA_FAILED');return d;
+ const d=await r.json() as any;if(!r.ok){if(/^CINTHIA_[A-Z_]+$/.test(d.message||''))throw new SupabaseError(d.message==='CINTHIA_NOT_FOUND'?404:409,d.message);throw new VoiceFault('Supabase',typeof d.code==='string'&&/^[A-Z0-9_]+$/.test(d.code)?d.code:'HTTP_ERROR',r.status);}return d;
 }
 export async function hashSessionKey(key:unknown){
  if(typeof key!=='string'||!/^[a-f0-9]{64}$/.test(key))throw new SupabaseError(400,'CINTHIA_INVALID');
@@ -41,25 +48,28 @@ export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean
  let queue=Promise.resolve(),timer:ReturnType<typeof setTimeout>|undefined,heartbeat:ReturnType<typeof setInterval>|undefined,saveTimer:ReturnType<typeof setInterval>|undefined;
  const authTimer=setTimeout(()=>void stop('AUTH_TIMEOUT'),10000);
  const send=(d:unknown)=>{if(peer.readyState===1){try{peer.send(JSON.stringify(d));}catch{}}};
- const rpc=(action:string,data={})=>cinthiaRpc(env,'talent_cinthia_session',{p_token:token,p_action:action,p_test:preview,p_data:{clientHash,connectionId,...data}});
+ const rpc=async(action:string,data={})=>{try{return await cinthiaRpc(env,'talent_cinthia_session',{p_token:token,p_action:action,p_test:preview,p_data:{clientHash,connectionId,...data}});}catch(e){if(e instanceof SupabaseError||e instanceof VoiceFault)throw e;throw new VoiceFault('Supabase',e instanceof Error?e.name:'CAUSE_NOT_REPORTED');}};
  const save=async()=>{await rpc('SAVE',{transcript:transcript.segments,resumeHandle});dirty=false;};
- const enqueue=(run:()=>Promise<void>)=>{queue=queue.then(()=>closed?undefined:run()).catch(e=>stop(e instanceof Error&&/^(CINTHIA_[A-Z_]+|GEMINI_CONNECTION_FAILED_\d+)$/.test(e.message)?e.message:'PERSISTENCE_OR_PROVIDER_ERROR'));};
- async function stop(code:string){
+ const enqueue=(run:()=>Promise<void>)=>{queue=queue.then(()=>closed?undefined:run()).catch(e=>stop(voiceDiagnostic(e).code,voiceDiagnostic(e,e instanceof SupabaseError?'Supabase':'Servidor')));};
+ async function stop(code:string,details:Record<string,unknown>={source:'Servidor',code}){
   if(closed)return;closed=true;clearTimeout(authTimer);clearTimeout(setupTimer);clearTimeout(timer);clearInterval(heartbeat);clearInterval(saveTimer);
+  const diagnostic={...details,reference:connectionId||crypto.randomUUID(),at:new Date().toISOString()};
+  if(code!=='COMPLETED'){console.error(JSON.stringify({event:'cinthia_error',...diagnostic}));send({type:'error',message:code,diagnostic});}
   try{upstream?.close(1000,'Session ended');}catch{}
   if(session&&!ending){try{await save();}catch{}try{await rpc('INTERRUPT',{code});}catch{}}
-  send({type:'error',message:code});try{peer.close(1000,code.slice(0,80));}catch{}
+  try{peer.close(1000,code.slice(0,80));}catch{}
  }
  const connect=async()=>{
   // API key is exclusively in this server request header, never in a browser URL.
   const controller=new AbortController(),connectTimeout=setTimeout(()=>controller.abort(),15000);
   let response:Response;
-  try{response=await fetch('https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent',{headers:{Upgrade:'websocket','x-goog-api-key':env.GEMINI_API_KEY!},signal:controller.signal});}finally{clearTimeout(connectTimeout);}
-  if(!response.webSocket)throw Error('GEMINI_CONNECTION_FAILED_'+response.status);upstream=response.webSocket;upstream.accept();
+  try{response=await fetch('https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent',{headers:{Upgrade:'websocket','x-goog-api-key':env.GEMINI_API_KEY!},signal:controller.signal});}catch(e){throw new VoiceFault('Gemini',e instanceof Error?e.name:'CAUSE_NOT_REPORTED');}finally{clearTimeout(connectTimeout);}
+  if(!response.webSocket)throw new VoiceFault('Gemini','HTTP_ERROR',response.status);upstream=response.webSocket;upstream.accept();
   upstream.addEventListener('message',e=>{
    if(closed)return;
    enqueue(async()=>{
     const m=JSON.parse(typeof e.data==='string'?e.data:e.data instanceof Blob?await e.data.text():new TextDecoder().decode(e.data as ArrayBuffer));
+    if(m.error){throw new VoiceFault('Gemini',typeof m.error.status==='string'&&/^[A-Z_]+$/.test(m.error.status)?m.error.status:'PROVIDER_ERROR',typeof m.error.code==='number'?m.error.code:undefined);}
     if(m.setupComplete){
      clearTimeout(setupTimer);await rpc('READY');ready=true;send({type:'ready',sessionId:session.id,deadline:session.deadline,transcript:transcript.segments});
      if(!resumeHandle)upstream!.send(JSON.stringify({clientContent:{turns:[{role:'user',parts:[{text:transcript.segments.length?'Retoma la entrevista sin repetir preguntas. Conversación anterior: '+JSON.stringify(transcript.segments.map(s=>({speaker:s.speaker,text:s.text,complete:s.complete}))):'Comienza la microentrevista.'}]}],turnComplete:true}}));
@@ -77,8 +87,8 @@ export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean
     if(m.goAway){await save();await stop('RECONNECT_REQUIRED');}
    });
   });
-  upstream.addEventListener('close',()=>{if(!closed)enqueue(()=>stop('CONNECTION_LOST'));});
-  upstream.addEventListener('error',()=>{if(!closed)enqueue(()=>stop('PROVIDER_ERROR'));});
+  upstream.addEventListener('close',e=>{if(!closed)enqueue(()=>stop('GEMINI_SOCKET_CLOSED',{source:'Gemini',code:'GEMINI_SOCKET_CLOSED',status:e.code}));});
+  upstream.addEventListener('error',()=>{if(!closed)enqueue(()=>stop('PROVIDER_ERROR',{source:'Gemini',code:'CAUSE_NOT_REPORTED'}));});
   setupTimer=setTimeout(()=>enqueue(()=>stop('CINTHIA_SETUP_TIMEOUT')),20000);
   upstream.send(JSON.stringify(liveSetup(liveModel(env),session.context,resumeHandle)));
  };
@@ -88,7 +98,7 @@ export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean
   let m:any;try{m=JSON.parse(e.data);}catch{void stop('INVALID_MESSAGE');return;}
   if(!authenticated){
    authenticated=true;clearTimeout(authTimer);
-   enqueue(async()=>{if(m.type!=='auth'||!/^([a-f0-9]{64})$/.test(m.token||''))throw Error('INVALID_AUTH');token=m.token;clientHash=await hashSessionKey(m.key);connectionId=crypto.randomUUID();session=await claimSession(()=>rpc('CLAIM'),()=>closed,()=>send({type:'recovering'}));transcript=new LiveTranscript(session.transcript);resumeHandle=session.resume_handle||undefined;
+   enqueue(async()=>{if(m.type!=='auth'||!/^([a-f0-9]{64})$/.test(m.token||''))throw Error('INVALID_AUTH');token=m.token;clientHash=await hashSessionKey(m.key);connectionId=crypto.randomUUID();send({type:'diagnosticReference',reference:connectionId});console.info(JSON.stringify({event:'cinthia_connection',reference:connectionId,ray:request.headers.get('cf-ray'),at:new Date().toISOString()}));session=await claimSession(()=>rpc('CLAIM'),()=>closed,()=>send({type:'recovering'}));transcript=new LiveTranscript(session.transcript);resumeHandle=session.resume_handle||undefined;
     timer=setTimeout(()=>enqueue(()=>stop('SESSION_TIME_LIMIT')),Math.max(0,Date.parse(session.deadline)-Date.now()));
     heartbeat=setInterval(()=>enqueue(async()=>{await save();}),15000);saveTimer=setInterval(()=>{if(dirty)enqueue(save);},5000);await connect();});return;
   }
@@ -104,7 +114,7 @@ export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean
    else if(m.type==='finish')enqueue(async()=>{
     if(!turnComplete){send({type:'finishRejected',message:'Espera a que termine la respuesta de CinthIA antes de finalizar.'});return;}
     try{await save();const receipt=await rpc('FINISH',{turnComplete});ending=true;send({type:'saved',...receipt});await stop('COMPLETED');}
-    catch{send({type:'finishRejected',message:'No se confirmó el guardado. Debe existir al menos una respuesta transcrita completa. Puedes reintentar.'});}
+    catch(e){const diagnostic={...voiceDiagnostic(e,'Supabase'),reference:connectionId,at:new Date().toISOString()};console.error(JSON.stringify({event:'cinthia_finish_error',...diagnostic}));send({type:'finishRejected',message:'No se confirmó el guardado.',diagnostic});}
    });
    else if(m.type==='close')enqueue(()=>stop('CLIENT_CLOSED'));
   }
