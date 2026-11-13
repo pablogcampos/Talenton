@@ -1251,4 +1251,27 @@ describe('Transición relacional PostgreSQL 17',()=>{
   expect((await call('/api/voicebot/dashboard?from=2031-01-02&to=2031-01-01')).status).toBe(400);
  });
 
+ it('admin and analyst assign only active recruiters, with CAS, audit and first-assignment SLA',async()=>{
+ const recruiter='60000000-0000-4000-8000-000000000001',analyst='60000000-0000-4000-8000-000000000002';
+ expect((await call('/api/voicebot/assignees','GET',undefined,recruiter)).data.canAssign).toBe(false);
+ const choices=await call('/api/voicebot/assignees','GET',undefined,analyst);expect(choices.data.canAssign).toBe(true);expect(choices.data.items.some((r:any)=>r.id===recruiter)).toBe(true);
+ const lead=(await db.query("insert into public.voicebot_leads(external_id,phone) values('ci-assign','999222333') returning *")).rows[0],path='/api/voicebot/leads/'+lead.id+'/assign';
+ const payload={version:1,recruiterId:recruiter};
+ expect((await call(path,'POST',payload,recruiter)).status).toBe(403);
+ expect((await call(path,'POST',{...payload,recruiterId:trainer},analyst)).data.message).toBe('VOICEBOT_INVALID_RECRUITER');
+ const result=await call(path,'POST',payload,analyst);expect(result.status).toBe(200);expect(result.data.owner_auth_id).toBe(recruiter);expect(result.data.status).toBe('EN_GESTION');expect(result.data.history.at(-1).action).toBe('ASSIGN');expect(result.data.management_locked_at).toBeNull();
+ expect((await call(path,'POST',payload)).status).toBe(409);
+ expect((await call(path,'POST',{...payload,version:2})).status).toBe(200);
+ const managed=await call('/api/voicebot/leads/'+lead.id,'PATCH',{action:'UPDATE',version:2,status:'CONTACTADO',outcome:'ACEPTA_PROPUESTA',notes:'Conservar'},recruiter);expect(managed.status).toBe(200);
+ const second='60000000-0000-4000-8000-000000000003';
+ await db.query('insert into auth.users values($1)',[second]);authUsers.set(second,{id:second});
+ await db.query("insert into talent.profiles(company_id,id,auth_user_id,username,display_name,role,status) values('tenant',$1::text,$1::uuid,$1::text,'Segundo reclutador','RECLUTADOR','ACTIVO')",[second]);
+ await db.query("insert into talent.user_modules(company_id,id,user_id,module) values('tenant',$1,$1,'SELECCION')",[second]);
+ const reassigned=await call(path,'POST',{version:3,recruiterId:second});expect(reassigned.status).toBe(200);expect(reassigned.data.owner_auth_id).toBe(second);expect(reassigned.data.management_notes).toBe('Conservar');expect(reassigned.data.management_locked_at).toBeTruthy();expect(reassigned.data.outcome).toBe('ACEPTA_PROPUESTA');
+ expect((await call('/api/voicebot/dashboard')).data.summary.assigned_measured).toBeGreaterThan(2);
+ await db.query("update talent.profiles set status='INACTIVO' where auth_user_id=$1",[recruiter]);
+ expect((await call(path,'POST',{...payload,version:3},analyst)).data.message).toBe('VOICEBOT_INVALID_RECRUITER');
+ await db.query("update talent.profiles set status='ACTIVO' where auth_user_id=$1",[recruiter]);
+ });
+
 });

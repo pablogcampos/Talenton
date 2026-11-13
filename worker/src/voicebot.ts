@@ -4,6 +4,11 @@ export async function handleVoicebot(request:Request,env:SupabaseEnv){
  const actor=await relationalSession(request,{...env,ORG_ENABLED:'false'}),url=new URL(request.url);
  let name='talent_voicebot_list',args:Record<string,unknown>={p_actor:actor.authUserId};
  if(request.method==='GET'&&url.pathname==='/api/voicebot/feed'){name='talent_voicebot_feed';
+ }else if(request.method==='GET'&&url.pathname==='/api/voicebot/assignees'){
+ name='talent_voicebot_assignees';
+ }else if(request.method==='POST'&&/^\/api\/voicebot\/leads\/[a-f0-9-]{36}\/assign$/.test(url.pathname)){
+ const data=await request.json() as any;if(!data||!Number.isSafeInteger(data.version)||typeof data.recruiterId!=='string'||!/^[a-f0-9-]{36}$/.test(data.recruiterId))throw new SupabaseError(400,'VOICEBOT_INVALID');
+ name='talent_voicebot_assign';args={...args,p_id:url.pathname.split('/').at(-2),p_version:data.version,p_recruiter:data.recruiterId};
  }else if(request.method==='GET'&&url.pathname==='/api/voicebot/dashboard'){
   const from=url.searchParams.get('from')||null,to=url.searchParams.get('to')||null;
   if([from,to].some(v=>v&&!/^\d{4}-\d{2}-\d{2}$/.test(v))||(from&&to&&from>to))throw new SupabaseError(400,'VOICEBOT_INVALID');
