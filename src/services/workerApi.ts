@@ -150,11 +150,17 @@ async function workerRequest<T>(path: string, init: RequestInit = {}, companyId?
   const token = await authenticatedToken();
   if(init.signal?.aborted)throw new WorkerApiError(408,'WORKER_REQUEST_TIMEOUT');
   let response: Response;
+  const options:RequestInit={...init,headers:{Authorization: `Bearer ${token}`, 'Content-Type':'application/json',...init.headers,...(companyId?{'X-Talent-Company':companyId}:{})}};
   try {
-    response = await fetch(companyId ? `${baseUrl}${path}` : unifiedUrl(path), {
-      ...init,
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...init.headers, ...(companyId ? { 'X-Talent-Company': companyId } : {}) },
-    });
+    try {
+      response = await fetch(companyId ? `${baseUrl}${path}` : unifiedUrl(path), options);
+    } catch (error) {
+      // Read-only recovery through Railway when the browser cannot reach workers.dev.
+      const relay=path==='/api/bootstrap'&&(!init.method||init.method==='GET')&&
+        ['talent-ontech.up.railway.app','techcenter.com'].includes(window.location.hostname);
+      if(!relay||init.signal?.aborted)throw error;
+      response=await fetch(companyId?path:path+'?unified=1',options);
+    }
   } catch {
     console.error(`[Worker API] ${init.method ?? 'GET'} ${path} network failure from ${window.location.origin}`);
     throw new WorkerApiError(0, 'WORKER_NETWORK_UNREACHABLE');

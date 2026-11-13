@@ -375,22 +375,24 @@ export const TalentProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     if (!isAuthenticated || mustChangePassword) return;
-    let active=true, running=false, queued=false;
+    let active=true, running=false, queued=false, failures=0;
+    let timer:ReturnType<typeof setTimeout>|undefined;
     const refresh=async()=>{
       if(running){queued=true;return;}
-      running=true;
+      if(!navigator.onLine)return;
+      clearTimeout(timer);running=true;
       try {
         const data=await loadBootstrap<{users:UserProfile[];campaigns:CampaignCall[];cohorts:TrainingCohort[];candidates:CandidateRecord[]}>(()=>active);
-        if(active){const self=data.users.find(u=>u.id===currentUser.id);if(self)setCurrentUserState(prev=>normalizeUserIdentity({...prev,...self,scopeCampaignIds:prev.scopeCampaignIds,role:prev.role,allowedModules:prev.allowedModules,companyId:prev.companyId}));setUsers(data.users.map(normalizeUserIdentity));setCampaigns(data.campaigns.map(c=>campaignFromFirestore(c.id,c as unknown as Record<string,unknown>)));setCohorts(data.cohorts.map(c=>trainingFromFirestore(c.id,c as unknown as Record<string,unknown>)));setCandidates(data.candidates.map(c=>candidateFromFirestore(c.id,c as unknown as Record<string,unknown>)));setConnectionError('');}
-      } catch (error) { if(active)setConnectionError('No se pudo actualizar la información. Se conservan los últimos datos cargados. '+refreshErrorMessage(error,'Intenta nuevamente.')); }
-      finally {running=false;if(active&&queued){queued=false;void refresh();}}
+        if(active){const self=data.users.find(u=>u.id===currentUser.id);if(self)setCurrentUserState(prev=>normalizeUserIdentity({...prev,...self,scopeCampaignIds:prev.scopeCampaignIds,role:prev.role,allowedModules:prev.allowedModules,companyId:prev.companyId}));setUsers(data.users.map(normalizeUserIdentity));setCampaigns(data.campaigns.map(c=>campaignFromFirestore(c.id,c as unknown as Record<string,unknown>)));setCohorts(data.cohorts.map(c=>trainingFromFirestore(c.id,c as unknown as Record<string,unknown>)));setCandidates(data.candidates.map(c=>candidateFromFirestore(c.id,c as unknown as Record<string,unknown>)));setConnectionError('');failures=0;}
+      } catch (error) { failures++;if(active)setConnectionError('No se pudo actualizar la información. Se conservan los últimos datos cargados. '+refreshErrorMessage(error,'Intenta nuevamente.')); }
+      finally {running=false;if(active){if(queued){queued=false;update();}else timer=setTimeout(()=>{if(document.visibilityState==='visible')void refresh();},Math.min(30000*2**failures,300000));}}
     };
     let debounce:ReturnType<typeof setTimeout>|undefined;
     const update=()=>{clearTimeout(debounce);debounce=setTimeout(()=>{if(active)void refresh();},250);};
     const visibility=()=>{if(document.visibilityState==='visible')update();};
-    update();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')update();},30000);
-    window.addEventListener('talent:data-changed',update);window.addEventListener('focus',update);document.addEventListener('visibilitychange',visibility);
-    return()=>{active=false;clearTimeout(debounce);window.clearInterval(timer);window.removeEventListener('talent:data-changed',update);window.removeEventListener('focus',update);document.removeEventListener('visibilitychange',visibility);};
+    update();
+    window.addEventListener('online',update);window.addEventListener('talent:data-changed',update);window.addEventListener('focus',visibility);document.addEventListener('visibilitychange',visibility);
+    return()=>{active=false;clearTimeout(debounce);clearTimeout(timer);window.removeEventListener('online',update);window.removeEventListener('talent:data-changed',update);window.removeEventListener('focus',visibility);document.removeEventListener('visibilitychange',visibility);};
   },[isAuthenticated,mustChangePassword,currentUser.id]);
 
   const addUser = async (userData: Omit<UserProfile, 'id'> & { password: string }): Promise<UserProfile> => {

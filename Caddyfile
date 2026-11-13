@@ -17,6 +17,18 @@
         format json
     }
 
+    # Authenticated, read-only bootstrap relay. No caching or alternate upstream.
+    @bootstrapRead {
+        path /api/bootstrap
+        method GET
+    }
+    handle @bootstrapRead {
+        header Cache-Control "no-store"
+        reverse_proxy https://talentcc-api.talentcc-techcenter.workers.dev {
+            header_up Host talentcc-api.talentcc-techcenter.workers.dev
+        }
+    }
+
     handle /health {
         header Content-Type application/json
         respond `{"ok":true}` 200

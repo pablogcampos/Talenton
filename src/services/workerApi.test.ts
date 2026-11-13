@@ -16,3 +16,19 @@ it('voicebot management refreshes only its inbox, conversion refreshes candidate
 it('bootstrap has a bounded wait with a read-specific error',async()=>{
  vi.stubEnv('VITE_ADMIN_API_URL','https://test');vi.useFakeTimers();m.token.mockResolvedValue('token');vi.stubGlobal('fetch',vi.fn(()=>new Promise(()=>{})));const {workerApi}=await import('./workerApi');const failed=expect(workerApi('/api/bootstrap')).rejects.toThrow('BOOTSTRAP_REFRESH_TIMEOUT');await vi.advanceTimersByTimeAsync(45000);await failed;
 });
+it('bootstrap recovers browser network failure through same-origin relay, keeping authorization and scope',async()=>{
+ vi.stubEnv('VITE_ADMIN_API_URL','https://test');m.token.mockResolvedValue('token');
+ vi.stubGlobal('window',{location:{hostname:'talent-ontech.up.railway.app',origin:'https://talent-ontech.up.railway.app'}});
+ const fetch=vi.fn().mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce(Response.json({candidates:[]}));vi.stubGlobal('fetch',fetch);
+ const {workerApi}=await import('./workerApi');expect(await workerApi('/api/bootstrap')).toEqual({candidates:[]});
+ expect(fetch).toHaveBeenCalledTimes(2);expect(fetch.mock.calls[1][0]).toBe('/api/bootstrap?unified=1');
+ expect(fetch.mock.calls[1][1].headers.Authorization).toBe('Bearer token');
+});
+it('does not relay permission failures or retry writes',async()=>{
+ vi.stubEnv('VITE_ADMIN_API_URL','https://test');m.token.mockResolvedValue('token');
+ vi.stubGlobal('window',{location:{hostname:'talent-ontech.up.railway.app',origin:'https://talent-ontech.up.railway.app'}});
+ const fetch=vi.fn().mockResolvedValueOnce(Response.json({message:'FORBIDDEN'},{status:403}));vi.stubGlobal('fetch',fetch);
+ const {workerApi}=await import('./workerApi');await expect(workerApi('/api/bootstrap')).rejects.toThrow('FORBIDDEN');expect(fetch).toHaveBeenCalledTimes(1);
+ fetch.mockReset().mockRejectedValue(new TypeError('Failed to fetch'));
+ await expect(workerApi('/api/candidates',{method:'POST',body:'{}'})).rejects.toThrow('WORKER_NETWORK_UNREACHABLE');expect(fetch).toHaveBeenCalledTimes(1);
+});

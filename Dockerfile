@@ -33,6 +33,8 @@ WORKDIR /app
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /app/dist /app/dist
 
+RUN caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
 EXPOSE 3000
 
 CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
