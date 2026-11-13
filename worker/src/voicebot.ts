@@ -4,6 +4,16 @@ export async function handleVoicebot(request:Request,env:SupabaseEnv){
  const actor=await relationalSession(request,{...env,ORG_ENABLED:'false'}),url=new URL(request.url);
  let name='talent_voicebot_list',args:Record<string,unknown>={p_actor:actor.authUserId};
  if(request.method==='GET'&&url.pathname==='/api/voicebot/feed'){name='talent_voicebot_feed';
+ }else if(request.method==='GET'&&url.pathname==='/api/voicebot/workspace'){
+ name='talent_voicebot_workspace';args={...args,p_filters:Object.fromEntries(url.searchParams)};
+ }else if(request.method==='POST'&&url.pathname==='/api/voicebot/settings'){
+ const d=await request.json() as any;if(!d||![d.minutes,d.warning,d.version].every(Number.isSafeInteger))throw new SupabaseError(400,'VOICEBOT_INVALID');
+ name='talent_voicebot_settings';args={...args,p_minutes:d.minutes,p_warning:d.warning,p_version:d.version};
+ }else if(request.method==='POST'&&/^\/api\/voicebot\/leads\/[a-f0-9-]{36}\/attempts$/.test(url.pathname)){
+ const text=await request.text();if(text.length>16000)throw new SupabaseError(413,'VOICEBOT_INVALID');
+ let d:any;try{d=JSON.parse(text);}catch{throw new SupabaseError(400,'VOICEBOT_INVALID');}
+ if(!d||!Number.isSafeInteger(d.version)||!['ATTEMPT','SCHEDULE','DISCARD'].includes(d.action)||typeof d.notes!=='string'||d.callbackAt!=null&&(typeof d.callbackAt!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(d.callbackAt)||!Number.isFinite(Date.parse(d.callbackAt))))throw new SupabaseError(400,'VOICEBOT_INVALID');
+ name='talent_voicebot_attempt';args={...args,p_id:url.pathname.split('/').at(-2),p_version:d.version,p_action:d.action,p_status:d.status??null,p_outcome:d.outcome??null,p_notes:d.notes,p_callback_at:d.callbackAt??null};
  }else if(request.method==='GET'&&url.pathname==='/api/voicebot/assignees'){
  name='talent_voicebot_assignees';
  }else if(request.method==='POST'&&/^\/api\/voicebot\/leads\/[a-f0-9-]{36}\/assign$/.test(url.pathname)){

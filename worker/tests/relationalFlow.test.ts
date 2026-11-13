@@ -1274,4 +1274,54 @@ describe('Transición relacional PostgreSQL 17',()=>{
  await db.query("update talent.profiles set status='ACTIVO' where auth_user_id=$1",[recruiter]);
  });
 
+ it('workspace filters, multiple immutable attempts, followups and configurable contact SLA',async()=>{
+ const recruiter='60000000-0000-4000-8000-000000000001',analyst='60000000-0000-4000-8000-000000000002';
+ const id=(await db.query("insert into public.voicebot_leads(external_id,phone,full_name,campaign_name,received_at,payload) values('workspace-1','999222777','Workspace Test','CI workspace',now()-interval '11 minutes','{\"dni\":\"12344321\"}') returning id")).rows[0].id;
+ const query='/api/voicebot/workspace?campaign=CI%20workspace&tab=all';
+ expect((await call(query,'GET',undefined,trainer)).status).toBe(403);
+ let report=await call(query,'GET',undefined,recruiter);expect(report.status).toBe(200);expect(report.data.total).toBe(1);expect(report.data.counts.unassigned).toBe(1);expect(report.data.metrics.overSla).toBe(1);expect(report.data.config.contact_minutes).toBe(10);
+ expect((await call(query+'&search=12344321','GET',undefined,recruiter)).data.total).toBe(1);
+ expect((await call(query+'&owner='+analyst,'GET',undefined,recruiter)).status).toBe(403);
+ const path='/api/voicebot/leads/'+id;await call(path,'PATCH',{action:'TAKE',version:1},recruiter);
+ const callbackAt=new Date(Date.now()+86400000).toISOString();
+ const schedule=await call(path+'/attempts','POST',{action:'SCHEDULE',version:2,notes:'Agendar conversación',callbackAt},recruiter);expect(schedule.status).toBe(200);
+ report=await call(query,'GET',undefined,recruiter);expect(report.data.metrics.overSla).toBe(1);expect(report.data.items[0].first_contact_at).toBeNull();expect(report.data.counts.followups).toBe(1);
+ const first=await call(path+'/attempts','POST',{action:'ATTEMPT',version:3,status:'NO_CONTACTADO',outcome:'NO_RESPONDE',notes:'Primer intento'},recruiter);expect(first.status).toBe(200);
+ const second=await call(path+'/attempts','POST',{action:'ATTEMPT',version:4,status:'CONTACTADO',outcome:'ACEPTA_PROPUESTA',notes:'Segundo intento'},recruiter);expect(second.status).toBe(200);
+ expect(second.data.history.filter((h:any)=>h.action==='ATTEMPT').map((h:any)=>h.notes)).toEqual(['Primer intento','Segundo intento']);
+ expect((await call(path+'/attempts','POST',{action:'ATTEMPT',version:4,status:'NO_CONTACTADO',outcome:'NUMERO_INCORRECTO',notes:''},recruiter)).status).toBe(409);
+ expect((await call(path+'/attempts','POST',{action:'ATTEMPT',version:5,status:'NO_CONTACTADO',outcome:'NO_RESPONDE',notes:''},analyst)).status).toBe(403);
+ expect((await call(path,'PATCH',{action:'UPDATE',version:5,status:'NO_CONTACTADO',outcome:'NO_RESPONDE',notes:'Editar anterior'},recruiter)).data.message).toBe('VOICEBOT_MANAGEMENT_LOCKED');
+ report=await call(query,'GET',undefined,recruiter);expect(report.data.metrics.overSla).toBe(0);expect(report.data.items[0].first_contact_at).toBeTruthy();expect(report.data.counts.followups).toBe(0);expect(report.data.metrics.minePending).toBe(1);
+ expect((await call('/api/voicebot/settings','POST',{minutes:12,warning:9,version:1},recruiter)).status).toBe(403);
+ expect((await call('/api/voicebot/settings','POST',{minutes:12,warning:13,version:1})).status).toBe(400);
+ expect((await call('/api/voicebot/settings','POST',{minutes:12,warning:9,version:1})).status).toBe(200);
+ expect((await call(query)).data.config.contact_minutes).toBe(12);
+ await call('/api/voicebot/settings','POST',{minutes:10,warning:8,version:2});
+ expect((await call(query+'&contact=NO_CONTACTADO')).data.total).toBe(0);
+ const discarded=await call(path+'/attempts','POST',{action:'DISCARD',version:5,status:'CONTACTADO',outcome:'NO_APTO',notes:'No cumple requisitos'},recruiter);expect(discarded.status).toBe(200);
+ expect((await call(query+'&state=DESCARTADO')).data.total).toBe(1);
+ });
+ it('conversion prevents normalized-phone duplicates without creating a second candidate',async()=>{
+ const recruiter='60000000-0000-4000-8000-000000000001';
+ await db.query("insert into talent.persons(company_id,id,full_name,phone) values('tenant','ci-duplicate-phone','Existing candidate','+51 999 222 888')");
+ const lead=(await db.query("insert into public.voicebot_leads(external_id,phone,full_name) values('workspace-duplicate','999222888','Lead same phone') returning *")).rows[0];
+ const path='/api/voicebot/leads/'+lead.id;
+ await call(path,'PATCH',{action:'TAKE',version:1},recruiter);
+ await call(path+'/attempts','POST',{action:'ATTEMPT',version:2,status:'CONTACTADO',outcome:'ACEPTA_PROPUESTA',notes:'Interesado'},recruiter);
+ const convert=await call(path+'/convert','POST',{version:3,companyId:'tenant'},recruiter);
+ expect(convert.data.message).toBe('VOICEBOT_DUPLICATE_CANDIDATE');
+ expect((await db.query("select count(*)::int n from talent.persons where company_id='tenant' and public.talent_voicebot_phone_key(phone)='999222888'")).rows[0].n).toBe(1);
+ expect((await db.query('select candidate_id from public.voicebot_leads where id=$1',[lead.id])).rows[0].candidate_id).toBeNull();
+ });
+
+ it('workspace counts cover all pages and date boundaries are Peru-local',async()=>{
+ await db.query("insert into public.voicebot_leads(external_id,phone,campaign_name,received_at) select 'workspace-page-'||g,'999000111','CI page','2030-02-01T05:00:00Z'::timestamptz from generate_series(1,51) g");
+ await db.query("insert into public.voicebot_leads(external_id,phone,campaign_name,received_at) values('workspace-page-before','999000111','CI page','2030-02-01T04:59:59Z'),('workspace-page-after','999000111','CI page','2030-02-02T05:00:00Z')");
+ const path='/api/voicebot/workspace?campaign=CI%20page&tab=all&from=2030-02-01&to=2030-02-01&sort=oldest';
+ const first=await call(path);expect(first.status).toBe(200);expect(first.data.total).toBe(51);expect(first.data.counts.all).toBe(51);expect(first.data.metrics.total).toBe(51);expect(first.data.items).toHaveLength(50);
+ const last=await call(path+'&page=1');expect(last.data.items).toHaveLength(1);expect(last.data.items[0].id).not.toBe(first.data.items[0].id);
+ expect((await call(path+'&state=CONVERTIDO')).data.metrics.total).toBe(0);
+ });
+
 });

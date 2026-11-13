@@ -1,0 +1,14 @@
+import type {LeadEvent} from './LeadTimeline';
+export type VoicebotLead={management_locked_at?:string|null;candidate_id?:string|null;candidate_company_id?:string|null;outcome:string|null;callback_at:string|null;history?:LeadEvent[];id:string;external_id:string;source:string;received_at:string;occurred_at:string|null;phone:string;full_name:string;origin:string;company_name:string;campaign_name:string;workday:string;district:string;experience:string;interview_availability:string;interest:string;ai_reason:string;transcript:string;bot_notes:string;source_recruiter:string;payload:Record<string,unknown>;status:string;owner_auth_id:string|null;owner_name:string|null;management_notes:string;version:number;op_state?:string;first_contact_at?:string|null;last_management_at?:string|null};
+export type Workspace={items:VoicebotLead[];total:number;counts:Record<string,number>;metrics:Record<string,number>;config:{contact_minutes:number;warning_minutes:number;version:number};canAssign:boolean;canConfigure:boolean;campaigns:string[];recruiters:{id:string;name:string}[];serverTime:string};
+export const operationalLabels:Record<string,string>={NUEVO:'Nuevo',EN_GESTION:'En gestión',SEGUIMIENTO:'Seguimiento pendiente',CONVERTIDO:'Convertido',DESCARTADO:'Descartado'};
+export const operationalState=(lead:VoicebotLead)=>lead.candidate_id?'CONVERTIDO':lead.status==='DESCARTADO'||['NO_ACEPTA_PROPUESTA','NO_APTO'].includes(lead.outcome||'')?'DESCARTADO':lead.status==='REPROGRAMADO'?'SEGUIMIENTO':lead.status==='NUEVO'?'NUEVO':'EN_GESTION';
+export function contactSla(lead:VoicebotLead,config:Workspace['config'],now:number){
+ const first=lead.first_contact_at||lead.history?.find(h=>['UPDATE','ATTEMPT'].includes(h.action))?.created_at;
+ if(!first&&['CONVERTIDO','DESCARTADO'].includes(operationalState(lead)))return {label:'Sin contacto registrado',tone:'bg-slate-100 text-slate-500',seconds:null};
+ const elapsed=Math.max(0,Math.floor(((first?Date.parse(first):now)-Date.parse(lead.received_at))/1000));
+ if(!Number.isFinite(elapsed))return {label:'Sin fecha válida',tone:'bg-slate-100 text-slate-500',seconds:null};
+ return {label:first?'Primer intento':elapsed>config.contact_minutes*60?'SLA vencido':elapsed>=config.warning_minutes*60?'Próximo a vencer':'Pendiente de contacto',tone:elapsed>config.contact_minutes*60?'bg-red-50 text-red-700':!first&&elapsed>=config.warning_minutes*60?'bg-amber-50 text-amber-800':'bg-emerald-50 text-emerald-700',seconds:elapsed};
+}
+export function contactPhone(phone:string){const digits=phone.replace(/\D/g,'');const n=digits.length===9?'51'+digits:digits.startsWith('00')?digits.slice(2):digits;return /^\d{7,15}$/.test(n)?n:null;}
+export const peru=(value:string|null|undefined)=>value?new Intl.DateTimeFormat('es-PE',{dateStyle:'short',timeStyle:'short',timeZone:'America/Lima'}).format(new Date(value)):'Sin registro';

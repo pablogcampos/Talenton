@@ -1,6 +1,6 @@
 export const dispositionLabels:Record<string,string>={CONTACTADO:'Contactado',NO_CONTACTADO:'No contactado',REPROGRAMADO:'Reprogramado'};
-export const outcomeLabels:Record<string,string>={ACEPTA_PROPUESTA:'Acepta propuesta',NO_ACEPTA_PROPUESTA:'No acepta propuesta',NO_APTO:'No apto',NO_RESPONDE:'No responde',CORTA_LLAMADA:'Corta llamada'};
-export const dispositionOutcomes:Record<string,string[]>={CONTACTADO:['ACEPTA_PROPUESTA','NO_ACEPTA_PROPUESTA','NO_APTO'],NO_CONTACTADO:['NO_RESPONDE','CORTA_LLAMADA']};
+export const outcomeLabels:Record<string,string>={ACEPTA_PROPUESTA:'Acepta propuesta',NO_ACEPTA_PROPUESTA:'No acepta propuesta',NO_APTO:'No apto',NO_RESPONDE:'No responde',CORTA_LLAMADA:'Corta llamada',NUMERO_INCORRECTO:'Número incorrecto'};
+export const dispositionOutcomes:Record<string,string[]>={CONTACTADO:['ACEPTA_PROPUESTA','NO_ACEPTA_PROPUESTA','NO_APTO'],NO_CONTACTADO:['NO_RESPONDE','CORTA_LLAMADA','NUMERO_INCORRECTO']};
 export function callbackInput(value:string|null|undefined){if(!value||!Number.isFinite(Date.parse(value)))return '';return new Date(Date.parse(value)-5*3600000).toISOString().slice(0,16);}
 export function callbackInstant(value:string){if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value))return null;const date=new Date(value+':00-05:00');return Number.isFinite(date.getTime())&&callbackInput(date.toISOString())===value?date.toISOString():null;}
 const control='mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm';

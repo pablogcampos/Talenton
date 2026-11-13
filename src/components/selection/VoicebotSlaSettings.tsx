@@ -1,0 +1,7 @@
+import {useState} from 'react';
+import {workerApi,getWorkerErrorMessage} from '../../services/workerApi';
+import type {Workspace} from './voicebotWorkspace';
+export function VoicebotSlaSettings({config,onSaved}:{config:Workspace['config'];onSaved:()=>void}){
+ const [minutes,setMinutes]=useState(config.contact_minutes),[warning,setWarning]=useState(config.warning_minutes),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ return <details className="text-sm"><summary className="cursor-pointer text-sky-800">Configurar SLA de primer contacto</summary><form className="mt-3 flex flex-wrap items-end gap-3" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{await workerApi('/api/voicebot/settings',{method:'POST',body:JSON.stringify({minutes,warning,version:config.version})});onSaved();}catch(e){setError(getWorkerErrorMessage(e));}finally{setBusy(false);}}}><label>Máximo (min)<input className="ml-2 w-20 rounded border p-2" type="number" min={1} max={1440} required value={minutes} onChange={e=>setMinutes(Number(e.target.value))}/></label><label>Aviso ámbar (min)<input className="ml-2 w-20 rounded border p-2" type="number" min={1} max={minutes} required value={warning} onChange={e=>setWarning(Number(e.target.value))}/></label><button className="rounded-lg border px-3 py-2" disabled={busy}>Guardar SLA</button>{error&&<p role="alert" className="text-red-700">{error}</p>}</form></details>;
+}

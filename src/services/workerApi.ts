@@ -14,6 +14,9 @@ export class WorkerApiError extends Error {
 
 const WORKER_ERROR_MESSAGES: Record<string, string> = {
   SUPABASE_REQUEST_FAILED: 'No se pudo validar tu sesión en Supabase. Intenta actualizar; si continúa, vuelve a iniciar sesión.',
+  VOICEBOT_DUPLICATE_CANDIDATE: 'Ya existe un candidato con este teléfono en la empresa. Revísalo en Candidatos antes de convertir; no se creó un duplicado.',
+  VOICEBOT_READ_TIMEOUT: 'La bandeja tardó demasiado en responder. Reintenta la actualización.',
+  VOICEBOT_NOTES_REQUIRED: 'Escribe una observación de al menos 3 caracteres.',
   VOICEBOT_INVALID_RECRUITER: 'Selecciona un reclutador activo con acceso a Selección.',
   VOICEBOT_CONVERSION_FORBIDDEN: 'Solo el responsable del lead puede convertirlo.',
   VOICEBOT_ALREADY_CONVERTED: 'Este lead ya fue convertido a candidato. Actualiza la bandeja.',
@@ -139,6 +142,7 @@ export function getWorkerErrorMessage(error: unknown, fallback = 'No se pudo com
 }
 
 export async function workerApi<T>(path: string, init: RequestInit = {}, companyId?: string): Promise<T> {
+  if(path.startsWith('/api/voicebot/workspace'))return boundedCandidateRequest(signal=>workerRequest<T>(path,{...init,signal},companyId),'VOICEBOT_READ_TIMEOUT');
   if(path==='/api/bootstrap')return boundedCandidateRequest(signal=>workerRequest<T>(path,{...init,signal},companyId),'BOOTSTRAP_REFRESH_TIMEOUT');
   if(path==='/api/candidates'&&init.method==='POST')return boundedCandidateRequest(signal=>workerRequest<T>(path,{...init,signal},companyId));
   return workerRequest<T>(path,init,companyId);
