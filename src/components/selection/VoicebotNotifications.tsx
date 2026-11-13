@@ -1,3 +1,4 @@
+import notificationSound from '../../assets/audio/voicebot-whistle.mp3';
 import {useEffect,useRef,useState} from 'react';
 import {supabase} from '../../services/supabase';
 import {workerApi} from '../../services/workerApi';
@@ -7,26 +8,28 @@ export function VoicebotNotifications(){
  const {currentUser,setActiveModule}=useTalent();
  const allowed=['ADMIN','JEFE_SELECCION','ANALISTA_SELECCION','RECLUTADOR'].includes(currentUser.role);
  const [count,setCount]=useState(0),[connected,setConnected]=useState(false);
- const audio=useRef<AudioContext|null>(null),pending=useRef(false);
- const play=()=>{const ctx=audio.current;if(!pending.current||ctx?.state!=='running')return;pending.current=false;
-  // Radar ascendente: same waveform as the preview selected by the user.
-  const rate=ctx.sampleRate,buffer=ctx.createBuffer(1,Math.ceil(2.5*rate),rate),samples=buffer.getChannelData(0);
-  for(const [start,length,frequency] of [[0,.45,520],[.65,.45,660],[1.3,.65,880]]){
-   for(let i=Math.ceil(start*rate);i<Math.min(samples.length,(start+length)*rate);i++){
-    const x=i/rate-start,envelope=Math.min(1,x/.015)*Math.min(1,(length-x)/.08),phase=2*Math.PI*(frequency+400*x/length)*x;
-    samples[i]+=.28*envelope*(Math.sin(phase)+.15*Math.sin(2*phase));
-   }
-  }
-  const source=ctx.createBufferSource();source.buffer=buffer;source.connect(ctx.destination);source.onended=()=>source.disconnect();source.start();
+ const audio=useRef<AudioContext|null>(null),buffer=useRef<AudioBuffer|null>(null),pending=useRef(0),loading=useRef(false);
+ const play=()=>{const ctx=audio.current;if(!pending.current||ctx?.state!=='running'||!buffer.current)return;
+  const count=pending.current;pending.current=0;
+  for(let i=0;i<count;i++){const source=ctx.createBufferSource();source.buffer=buffer.current;source.connect(ctx.destination);source.onended=()=>source.disconnect();source.start(ctx.currentTime+i*buffer.current.duration);}
  };
- useEffect(()=>{if(!allowed)return;const unlock=()=>{try{audio.current??=new AudioContext();void audio.current.resume().then(play).catch(()=>{});}catch{/* Browser requires a user gesture. */}};
+ useEffect(()=>{if(!allowed)return;let active=true;const controller=new AbortController();
+  const unlock=()=>{try{
+   audio.current??=new AudioContext();const ctx=audio.current;
+   void ctx.resume().then(()=>{if(active)play();}).catch(()=>{});
+   if(!buffer.current&&!loading.current){loading.current=true;
+    void fetch(notificationSound,{signal:controller.signal}).then(r=>{if(!r.ok)throw Error('AUDIO_LOAD_FAILED');return r.arrayBuffer();})
+     .then(bytes=>ctx.decodeAudioData(bytes)).then(decoded=>{if(active){buffer.current=decoded;play();}})
+     .catch(()=>{/* Retry loading on the next user interaction. */}).finally(()=>{if(active)loading.current=false;});
+   }
+  }catch{/* Browser requires a user gesture. */}};
   unlock();window.addEventListener('pointerdown',unlock);window.addEventListener('keydown',unlock);
-  return()=>{window.removeEventListener('pointerdown',unlock);window.removeEventListener('keydown',unlock);void audio.current?.close();audio.current=null;pending.current=false;};
+  return()=>{active=false;controller.abort();window.removeEventListener('pointerdown',unlock);window.removeEventListener('keydown',unlock);void audio.current?.close();audio.current=null;buffer.current=null;loading.current=false;pending.current=0;};
  },[allowed,currentUser.id]);
  useEffect(()=>{if(!allowed)return;let alive=true,busy=false,initialized=false,watermark='',seen=new Set<string>();
   const signal=(rows:{id:string;received_at:string}[],realtime=false)=>{
    const fresh=rows.filter(r=>!seen.has(r.id)&&(realtime||!watermark||r.received_at>=watermark));
-   if(initialized&&fresh.length){setCount(n=>n+fresh.length);pending.current=true;play();}
+   if(initialized&&fresh.length){setCount(n=>n+fresh.length);pending.current+=fresh.length;play();}
    for(const row of rows){seen.add(row.id);if(row.received_at>watermark)watermark=row.received_at;}
    if(seen.size>2000)seen=new Set(rows.map(r=>r.id));initialized=true;
   };
