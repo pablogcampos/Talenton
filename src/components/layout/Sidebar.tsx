@@ -1,3 +1,4 @@
+import {CinthiaIcon} from '../cinthia/CinthiaIcon';
 import React from 'react';
 import { LucideIcon } from 'lucide-react';
 import { 
@@ -7,7 +8,7 @@ import {
   Layers, 
   Users, 
   GraduationCap, 
-  Headphones, 
+  Headphones,
   Briefcase, 
   PieChart, 
   Settings, 
@@ -116,7 +117,7 @@ export const Sidebar: React.FC<{ navigationOpen?: boolean; onCloseNavigation?: (
       modKey: 'SELECCION',
       items: selectionItems
     });
-    if (['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION', 'RECLUTADOR'].includes(currentUser.role)) selectionItems.push({ id: 'SELECCION_PROPUESTAS', label: 'Propuesta Laboral', icon: Briefcase, badge: null }, { id: 'SELECCION_VOICEBOT', label: 'Leads Voicebot', icon: Headphones, badge: null });
+    if (['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION', 'RECLUTADOR'].includes(currentUser.role)) selectionItems.push({ id: 'SELECCION_PROPUESTAS', label: 'Propuesta Laboral', icon: Briefcase, badge: null }, { id: 'SELECCION_VOICEBOT', label: 'Leads Voicebot', icon: Headphones, badge: null }, { id: 'SELECCION_CINTHIA', label: 'CinthIA | Evaluaciones', icon: CinthiaIcon, badge: null });
     if (['ADMIN', 'RECLUTADOR', 'ANALISTA_SELECCION'].includes(currentUser.role)) selectionItems.push({ id: 'SELECCION_CAPTACION', label: 'Captación', icon: UserPlus, badge: null });
   }
 

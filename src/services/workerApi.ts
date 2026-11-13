@@ -13,6 +13,17 @@ export class WorkerApiError extends Error {
 }
 
 const WORKER_ERROR_MESSAGES: Record<string, string> = {
+  CINTHIA_UNAVAILABLE: 'Las entrevistas y los envíos se habilitarán cuando Gemini esté conectado.',
+  CINTHIA_NOT_FOUND: 'El enlace o registro no existe o no está disponible.',
+  CINTHIA_INVALID_STATE: 'La invitación cambió de estado. Actualiza para continuar.',
+  CINTHIA_PHONE_REQUIRED: 'El lead necesita un teléfono válido.',
+  CINTHIA_INVALID: 'Revisa los filtros y las fechas seleccionadas.',
+  CINTHIA_CONSENT_REQUIRED: 'Acepta el procesamiento de voz y transcripción para comenzar.',
+  CINTHIA_SESSION_BUSY: 'La entrevista está abierta en otra conexión. Cierra esa pestaña y espera unos segundos para reintentar.',
+  CINTHIA_SESSION_EXPIRED: 'Terminó el tiempo disponible. Las respuestas guardadas se conservan.',
+  CINTHIA_INCOMPLETE: 'Completa una respuesta y espera a CinthIA antes de finalizar.',
+  CINTHIA_SETUP_TIMEOUT: 'El servicio de voz tardó demasiado. Reintenta la conexión.',
+  CINTHIA_FAILED: 'No se pudo cargar CinthIA. Reintenta la operación.',
   SUPABASE_REQUEST_FAILED: 'No se pudo validar tu sesión en Supabase. Intenta actualizar; si continúa, vuelve a iniciar sesión.',
   VOICEBOT_DUPLICATE_CANDIDATE: 'Ya existe un candidato con este teléfono en la empresa. Revísalo en Candidatos antes de convertir; no se creó un duplicado.',
   VOICEBOT_READ_TIMEOUT: 'La bandeja tardó demasiado en responder. Reintenta la actualización.',
@@ -142,6 +153,7 @@ export function getWorkerErrorMessage(error: unknown, fallback = 'No se pudo com
 }
 
 export async function workerApi<T>(path: string, init: RequestInit = {}, companyId?: string): Promise<T> {
+  if(path.startsWith('/api/cinthia'))return boundedCandidateRequest(signal=>workerRequest<T>(path,{...init,signal:init.signal||signal},companyId));
   if(path.startsWith('/api/voicebot/workspace'))return boundedCandidateRequest(signal=>workerRequest<T>(path,{...init,signal},companyId),'VOICEBOT_READ_TIMEOUT');
   if(path==='/api/bootstrap')return boundedCandidateRequest(signal=>workerRequest<T>(path,{...init,signal},companyId),'BOOTSTRAP_REFRESH_TIMEOUT');
   if(path==='/api/candidates'&&init.method==='POST')return boundedCandidateRequest(signal=>workerRequest<T>(path,{...init,signal},companyId));
@@ -179,7 +191,7 @@ async function workerRequest<T>(path: string, init: RequestInit = {}, companyId?
   }
   const payload = await response.json() as T;
   if (init.method && !['GET','HEAD'].includes(init.method.toUpperCase())) {
-    window.dispatchEvent(new Event(path.startsWith('/api/voicebot/')&&!path.endsWith('/convert')?'talent:voicebot-changed':'talent:data-changed'));
+    window.dispatchEvent(new Event(path.startsWith('/api/cinthia')?'talent:cinthia-changed':path.startsWith('/api/voicebot/')&&!path.endsWith('/convert')?'talent:voicebot-changed':'talent:data-changed'));
   }
   return payload;
 }

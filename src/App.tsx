@@ -8,6 +8,8 @@ import { ActiveNavModule, UserProfile } from './types';
 import { SelectionRqAlert } from './components/selection/SelectionRqAlert';
 
 import { VoicebotNotifications } from './components/selection/VoicebotNotifications';
+const CinthiaView = lazy(() => import('./views/CinthiaView').then(m => ({default:m.CinthiaView})));
+const PublicCinthiaView = lazy(() => import('./views/PublicCinthiaView').then(m => ({default:m.PublicCinthiaView})));
 const VoicebotView = lazy(() => import('./views/VoicebotView').then(m => ({ default: m.VoicebotView })));
 const LaborOffersView = lazy(() => import('./views/LaborOffersView').then(m => ({ default: m.LaborOffersView })));
 const PublicOfferView = lazy(() => import('./views/PublicOfferView').then(m => ({ default: m.PublicOfferView })));
@@ -39,6 +41,7 @@ const CreateTrainingCohortModal = lazy(() => import('./components/modals/CreateT
 
 const rolesForView: Partial<Record<ActiveNavModule, UserProfile['role'][]>> = {
   OPERACIONES_ADMIN: ['ADMIN', 'JEFE_OPERACIONES', 'COORDINADOR_OPERACIONES'],
+  SELECCION_CINTHIA: ['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION', 'RECLUTADOR'],
   SELECCION_VOICEBOT: ['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION', 'RECLUTADOR'],
   SELECCION_PROPUESTAS: ['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION', 'RECLUTADOR'],
   SELECCION_RQ: ['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION'],
@@ -119,6 +122,7 @@ const MainLayout: React.FC = () => {
           <Suspense fallback={<div className="py-12 text-center text-slate-500">Cargando módulo…</div>}>
           <div className="talent-view w-full space-y-6">
             {(activeModule === 'INICIO' || activeModule === 'SELECCION_DASHBOARD') && <SelectionRqAlert />}
+            {activeModule === 'SELECCION_CINTHIA' && <CinthiaView />}
             {activeModule === 'SELECCION_VOICEBOT' && <VoicebotView />}
             {activeModule === 'SELECCION_PROPUESTAS' && <LaborOffersView />}
             {activeModule === 'SELECCION_RQ' && <SelectionRqView />}
@@ -227,6 +231,8 @@ const AppContent: React.FC = () => {
 };
 
 export default function App() {
+  const cinthiaRoute=window.location.pathname.match(/^\/cinthia\/([a-f0-9]{64})$/);
+  if(cinthiaRoute)return <Suspense fallback={<p className="p-6">Cargando CinthIA…</p>}><PublicCinthiaView key={cinthiaRoute[1]} token={cinthiaRoute[1]}/></Suspense>;
   const groupOfferRoute = window.location.pathname.match(/^\/propuesta\/capacitacion\/([a-f0-9]{64})$/);
   if (groupOfferRoute) return <Suspense fallback={<p className="p-6">Cargando propuesta…</p>}><PublicOfferView key={groupOfferRoute[1]} token={groupOfferRoute[1]} groupLink /></Suspense>;
   const offerRoute = window.location.pathname.match(/^\/propuesta\/([a-f0-9]{64})$/);

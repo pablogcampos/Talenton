@@ -4,6 +4,9 @@ compatibility_date = "2026-08-29"
 
 [vars]
 DATA_PROVIDER = "supabase"
+CINTHIA_LIVE_MODEL = "gemini-3.8-live"
+CINTHIA_LIVE_ENABLED = "true"
+CINTHIA_LIVE_VALIDATED = "true"
 ORG_ENABLED = "true"
 # Clave pública; el secreto correspondiente vive exclusivamente en Worker Secrets.
 TURNSTILE_SITE_KEY = "0x4AAAAAAFVv6vsQSKuOax3y"

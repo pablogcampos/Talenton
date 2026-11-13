@@ -15,8 +15,10 @@ const control='min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 te
 const primary='min-h-10 rounded-lg bg-sky-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50';
 const emptyFilters={contact:'',search:'',campaign:'',state:'',owner:'',from:'',to:'',sort:'urgency'};
 export function VoicebotView(){
+ const [cinthiaSearch]=useState(()=>sessionStorage.getItem('cinthia:voicebot-search')||'');
+ useEffect(()=>{sessionStorage.removeItem('cinthia:voicebot-search');},[]);
  const {currentUser}=useTalent(),isAdmin=currentUser.role==='ADMIN';
- const [view,setView]=useState('inbox'),[tab,setTab]=useState('mine'),[draft,setDraft]=useState(emptyFilters),[filters,setFilters]=useState(emptyFilters),[page,setPage]=useState(0),[revision,setRevision]=useState(0);
+ const [view,setView]=useState('inbox'),[tab,setTab]=useState(cinthiaSearch?'all':'mine'),[draft,setDraft]=useState({...emptyFilters,search:cinthiaSearch}),[filters,setFilters]=useState({...emptyFilters,search:cinthiaSearch}),[page,setPage]=useState(0),[revision,setRevision]=useState(0);
  const [data,setData]=useState<Workspace|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[busy,setBusy]=useState(false),[selected,setSelected]=useState<Lead|null>(null),[uid,setUid]=useState(''),[picked,setPicked]=useState<string[]>([]),[notice,setNotice]=useState('');
  const [notes,setNotes]=useState(''),[nextStatus,setNextStatus]=useState(''),[outcome,setOutcome]=useState(''),[callback,setCallback]=useState(''),[scheduling,setScheduling]=useState(false),[offset,setOffset]=useState(0);
  const formRef=useRef<HTMLDivElement>(null),now=useLeadClock()+offset;

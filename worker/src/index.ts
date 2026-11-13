@@ -1,3 +1,5 @@
+import {cinthiaSocket} from './cinthiaLive';
+import {handleCinthia,cinthiaPreview} from './cinthia';
 import {handleVoicebot} from './voicebot';
 import { limaDay, trainingDayNumber, unlockIsActive, evaluationDefinition, validEvaluationDefinition, trainingEvaluationsApproved } from '../../shared/trainingRules';
 import { handleCapture, CaptureError } from './capture';
@@ -14,6 +16,11 @@ import { surveyRpc, publicSurvey } from './surveys';
 import { handleOffers } from './offers';
 import { unqualifyCandidates } from './unifiedCandidates';
 export interface Env extends SupabaseEnv, RuntimeEnv {
+  CINTHIA_DEV_PREVIEW?: string;
+  GEMINI_API_KEY?: string;
+  CINTHIA_LIVE_MODEL?: string;
+  CINTHIA_LIVE_ENABLED?: string;
+  CINTHIA_LIVE_VALIDATED?: string;
   VERIFIED_SESSION?: SessionProfile;
   RELATIONAL_ACTOR?: SessionProfile;
   DATA_PROVIDER?: string;
@@ -1351,6 +1358,11 @@ const worker={async fetch(request:Request,env:Env):Promise<Response>{
    }catch(e){return response({message:e instanceof SupabaseError?e.code:'TRAINING_ADMIN_INVALID'},e instanceof SupabaseError?e.status:400,cors(request,env));}
   }
 
+  if(request.method!=='OPTIONS' && (path==='/api/cinthia'||path.startsWith('/api/cinthia/')||path.startsWith('/api/public/cinthia/'))){
+   const headers={...cors(request,env),'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
+   try{if(!originAllowed(request,env))throw new SupabaseError(403,'ORIGIN_NOT_ALLOWED');if(path==='/api/public/cinthia/live')return cinthiaSocket(request,env,cinthiaPreview(request,env));return response(await handleCinthia(request,env),200,headers);}
+   catch(e){return response({message:e instanceof SupabaseError?e.code:'CINTHIA_FAILED'},e instanceof SupabaseError?e.status:500,headers);}
+  }
   if(request.method!=='OPTIONS' && path.startsWith('/api/voicebot/')){
    try{
     if(!originAllowed(request,env))throw new SupabaseError(403,'ORIGIN_NOT_ALLOWED');

@@ -54,6 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
   const getModuleMeta = (mod: ActiveNavModule) => {
     switch (mod) {
       case 'OPERACIONES_ADMIN': return { title: 'Requerimientos y enlaces', subtitle: 'RQ por empresa', section: 'Operaciones' };
+      case 'SELECCION_CINTHIA': return {title:'CinthIA | Evaluaciones',subtitle:'Microentrevistas de leads Voicebot',section:'Selección'};
       case 'SELECCION_VOICEBOT': return { title: 'Leads Voicebot', subtitle: 'Bandeja compartida de leads', section: 'Selección' };
       case 'SELECCION_PROPUESTAS': return { title: 'Propuesta Laboral', subtitle: 'Propuestas, asignación y firmas', section: 'Selección' };
       case 'SELECCION_CAPTACION': return { title: 'Captación', subtitle: 'Enlaces y bandeja de postulantes', section: 'Selección' };
