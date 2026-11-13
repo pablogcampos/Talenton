@@ -112,3 +112,15 @@ it('Live transcript preserves interrupted fragments and provider origin; product
  expect(liveSetup('gemini-3.8-live',{}).setup.generationConfig.responseModalities).toEqual(['AUDIO']);
  expect(await hashSessionKey('a'.repeat(64))).toMatch(/^[a-f0-9]{64}$/);await expect(hashSessionKey('bad')).rejects.toThrow('CINTHIA_INVALID');
 });
+import {claimSession} from '../src/cinthiaLive';
+import {SupabaseError} from '../src/supabase';
+it('waits through a stale 45-second lease without consuming client retries',async()=>{
+ let tries=0;const wait=vi.fn(async()=>{}),notice=vi.fn();
+ const r=await claimSession(async()=>{if(++tries<=11)throw new SupabaseError(409,'CINTHIA_SESSION_BUSY');return {id:'recovered'};},()=>false,notice,wait);
+ expect(r.id).toBe('recovered');expect(wait).toHaveBeenCalledTimes(11);expect(notice).toHaveBeenCalledTimes(1);
+});
+it('does not take an active session or retry invalid credentials',async()=>{
+ const busy=vi.fn(async()=>{throw new SupabaseError(409,'CINTHIA_SESSION_BUSY');});
+ await expect(claimSession(busy,()=>false,()=>{},async()=>{})).rejects.toThrow('CINTHIA_SESSION_BUSY');expect(busy).toHaveBeenCalledTimes(13);
+ const invalid=vi.fn(async()=>{throw new SupabaseError(404,'CINTHIA_NOT_FOUND');});await expect(claimSession(invalid,()=>false,()=>{},async()=>{})).rejects.toThrow('CINTHIA_NOT_FOUND');expect(invalid).toHaveBeenCalledTimes(1);
+});

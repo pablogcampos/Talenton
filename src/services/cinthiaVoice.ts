@@ -5,7 +5,7 @@ export interface CinthiaVoiceSession{sessionId:string;setMicrophone(enabled:bool
 const keyName=(token:string)=>'cinthia-session:'+token;
 export const pcm16=(samples:Float32Array)=>{const bytes=new Uint8Array(samples.length*2),v=new DataView(bytes.buffer);samples.forEach((s,i)=>v.setInt16(i*2,Math.round(Math.max(-1,Math.min(1,s))*(s<0?32768:32767)),true));return bytes;};
 const encode=(b:Uint8Array)=>{let s='';for(const n of b)s+=String.fromCharCode(n);return btoa(s);};
-const worklet=`class Capture extends AudioWorkletProcessor{constructor(){super();this.samples=[];this.position=0;}process(inputs){const a=inputs[0]?.[0];if(a){this.samples.push(...a);const ratio=sampleRate/16000;const out=[];while(this.position+ratio<this.samples.length){const i=Math.floor(this.position);out.push(this.samples[i]);this.position+=ratio;}const used=Math.floor(this.position);this.samples.splice(0,used);this.position-=used;if(out.length)this.port.postMessage(new Float32Array(out));}return true;}}registerProcessor('cinthia-capture',Capture);`;
+const worklet=`class Capture extends AudioWorkletProcessor{constructor(){super();this.samples=[];this.position=0;this.pending=[];}process(inputs){const a=inputs[0]?.[0];if(a){this.samples.push(...a);const ratio=sampleRate/16000;const out=[];while(this.position+ratio<this.samples.length){const i=Math.floor(this.position);out.push(this.samples[i]);this.position+=ratio;}const used=Math.floor(this.position);this.samples.splice(0,used);this.position-=used;this.pending.push(...out);while(this.pending.length>=1600)this.port.postMessage(new Float32Array(this.pending.splice(0,1600)));}return true;}}registerProcessor('cinthia-capture',Capture);`;
 export const cinthiaVoice={
  available:true,
  async start(token:string,consentVersion:string,onEvent:(event:VoiceEvent)=>void):Promise<CinthiaVoiceSession>{
@@ -28,12 +28,13 @@ export const cinthiaVoice={
    ready=false;manualClosing=false;turnEnded=false;
    const url=new URL(base+'/api/public/cinthia/live');url.protocol=url.protocol==='https:'?'wss:':'ws:';
    const socket=new WebSocket(url);ws=socket;let settled=false;
-   const timeout=setTimeout(()=>{reject(Error('La conexión de voz tardó demasiado.'));socket.close();},25000);
+   const timeout=setTimeout(()=>{reject(Error('La conexión de voz tardó demasiado.'));socket.close();},80000);
    socket.onopen=()=>socket.send(JSON.stringify({type:'auth',token,key}));
    socket.onmessage=e=>{
     if(closed||ws!==socket)return;
     let m:any;try{m=JSON.parse(e.data);}catch{return;}
-    if(m.type==='ready'){clearTimeout(timeout);settled=true;ready=true;sessionId=m.sessionId;deadline=Date.parse(m.deadline);onEvent({type:'transcript',segments:m.transcript||[]});const previous=[...(m.transcript||[])].reverse().find((s:VoiceSegment)=>s.speaker==='cinthia');if(previous)onEvent({type:'question',text:previous.text});state(muted?'available':'listening');resolve();}
+    if(m.type==='recovering'){onEvent({type:'error',message:'Recuperando la conexión anterior. Espera unos segundos; tus respuestas guardadas se conservan.'});}
+    if(m.type==='ready'){onEvent({type:'error',message:''});clearTimeout(timeout);settled=true;ready=true;sessionId=m.sessionId;deadline=Date.parse(m.deadline);onEvent({type:'transcript',segments:m.transcript||[]});const previous=[...(m.transcript||[])].reverse().find((s:VoiceSegment)=>s.speaker==='cinthia');if(previous)onEvent({type:'question',text:previous.text});state(muted?'available':'listening');resolve();}
     if(m.type==='audio'&&ctx){try{const raw=atob(m.data),bytes=Uint8Array.from(raw,c=>c.charCodeAt(0)),rate=Number(/rate=(\d+)/.exec(m.mimeType)?.[1]||24000);if(bytes.length%2||rate<8000||rate>48000)return;const b=ctx.createBuffer(1,bytes.length/2,rate),v=new DataView(bytes.buffer),samples=b.getChannelData(0);for(let i=0;i<samples.length;i++)samples[i]=v.getInt16(i*2,true)/32768;const s=ctx.createBufferSource();s.buffer=b;s.connect(ctx.destination);playing.add(s);turnEnded=false;state('speaking');s.onended=()=>{playing.delete(s);s.disconnect();if(!playing.size&&turnEnded)state(muted?'available':'listening');};const when=Math.max(ctx.currentTime,nextAudio);s.start(when);nextAudio=when+b.duration;}catch{onEvent({type:'error',message:'No se pudo reproducir el audio.'});}}
     if(m.type==='interrupted'){stopAudio();state(muted?'available':'listening');}
     if(m.type==='transcript'){if(!playing.size&&m.segments.at(-1)?.speaker==='candidate')state('processing');onEvent({type:'transcript',segments:m.segments});const last=[...m.segments].reverse().find((s:VoiceSegment)=>s.speaker==='cinthia');if(last)onEvent({type:'question',text:last.text});}

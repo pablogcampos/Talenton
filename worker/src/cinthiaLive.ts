@@ -19,6 +19,17 @@ export class LiveTranscript {
  turn(interrupted:boolean){for(const speaker of ['candidate','cinthia'] as const){const s=this.active[speaker];if(s){s.complete=!interrupted;delete this.active[speaker];}}}
 }
 
+// A lost mobile socket may leave a lease alive for 45 seconds. Do not steal it.
+export async function claimSession(claim:()=>Promise<any>,closed:()=>boolean,waiting:()=>void,sleep=(ms:number)=>new Promise<void>(r=>setTimeout(r,ms))){
+ for(let attempt=0;;attempt++){
+  if(closed())throw new SupabaseError(409,'CINTHIA_CONNECTION_CLOSED');
+  try{return await claim();}catch(e){
+   if(!(e instanceof SupabaseError)||e.code!=='CINTHIA_SESSION_BUSY'||attempt>=12)throw e;
+   if(attempt===0)waiting();await sleep(4000);
+  }
+ }
+}
+
 // Server-side relay: the browser cannot set instructions, supply a transcript, or mark completion.
 export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean):Response{
  if(!liveAvailable(env,preview))throw new SupabaseError(503,'CINTHIA_UNAVAILABLE');
@@ -29,7 +40,7 @@ export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean
  let setupTimer:ReturnType<typeof setTimeout>|undefined;
  let queue=Promise.resolve(),timer:ReturnType<typeof setTimeout>|undefined,heartbeat:ReturnType<typeof setInterval>|undefined,saveTimer:ReturnType<typeof setInterval>|undefined;
  const authTimer=setTimeout(()=>void stop('AUTH_TIMEOUT'),10000);
- const send=(d:unknown)=>{if(peer.readyState===1)peer.send(JSON.stringify(d));};
+ const send=(d:unknown)=>{if(peer.readyState===1){try{peer.send(JSON.stringify(d));}catch{}}};
  const rpc=(action:string,data={})=>cinthiaRpc(env,'talent_cinthia_session',{p_token:token,p_action:action,p_test:preview,p_data:{clientHash,connectionId,...data}});
  const save=async()=>{await rpc('SAVE',{transcript:transcript.segments,resumeHandle});dirty=false;};
  const enqueue=(run:()=>Promise<void>)=>{queue=queue.then(()=>closed?undefined:run()).catch(e=>stop(e instanceof Error&&/^(CINTHIA_[A-Z_]+|GEMINI_CONNECTION_FAILED_\d+)$/.test(e.message)?e.message:'PERSISTENCE_OR_PROVIDER_ERROR'));};
@@ -54,14 +65,14 @@ export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean
      if(!resumeHandle)upstream!.send(JSON.stringify({clientContent:{turns:[{role:'user',parts:[{text:transcript.segments.length?'Retoma la entrevista sin repetir preguntas. Conversación anterior: '+JSON.stringify(transcript.segments.map(s=>({speaker:s.speaker,text:s.text,complete:s.complete}))):'Comienza la microentrevista.'}]}],turnComplete:true}}));
     }
     if(m.sessionResumptionUpdate?.resumable&&m.sessionResumptionUpdate.newHandle){resumeHandle=m.sessionResumptionUpdate.newHandle;dirty=true;}
-    const sc=m.serverContent;
+    const sc=m.serverContent;let transcriptChanged=false;
     if(sc){
-     if(sc.interrupted){transcript.turn(true);send({type:'interrupted'});dirty=true;}
-     if(sc.inputTranscription){transcript.append('candidate',sc.inputTranscription.text||'',!!sc.inputTranscription.finished);dirty=true;turnComplete=false;}
-     if(sc.outputTranscription){transcript.append('cinthia',sc.outputTranscription.text||'',!!sc.outputTranscription.finished);dirty=true;turnComplete=false;}
+     if(sc.interrupted){transcriptChanged=true;transcript.turn(true);send({type:'interrupted'});dirty=true;}
+     if(sc.inputTranscription){transcriptChanged=true;transcript.append('candidate',sc.inputTranscription.text||'',!!sc.inputTranscription.finished);dirty=true;turnComplete=false;}
+     if(sc.outputTranscription){transcriptChanged=true;transcript.append('cinthia',sc.outputTranscription.text||'',!!sc.outputTranscription.finished);dirty=true;turnComplete=false;}
      for(const p of sc.modelTurn?.parts||[])if(p.inlineData?.data&&p.inlineData.mimeType?.startsWith('audio/pcm')){send({type:'audio',data:p.inlineData.data,mimeType:p.inlineData.mimeType});turnComplete=false;}
      if(sc.turnComplete){turnComplete=!sc.interrupted&&sc.interactionStatus!=='IN_PROGRESS';transcript.turn(!!sc.interrupted);await save();send({type:'turnComplete'});}
-     if(dirty||sc.turnComplete)send({type:'transcript',segments:transcript.segments});
+     if(transcriptChanged||sc.turnComplete)send({type:'transcript',segments:transcript.segments});
     }
     if(m.goAway){await save();await stop('RECONNECT_REQUIRED');}
    });
@@ -77,9 +88,9 @@ export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean
   let m:any;try{m=JSON.parse(e.data);}catch{void stop('INVALID_MESSAGE');return;}
   if(!authenticated){
    authenticated=true;clearTimeout(authTimer);
-   enqueue(async()=>{if(m.type!=='auth'||!/^([a-f0-9]{64})$/.test(m.token||''))throw Error('INVALID_AUTH');token=m.token;clientHash=await hashSessionKey(m.key);connectionId=crypto.randomUUID();session=await rpc('CLAIM');transcript=new LiveTranscript(session.transcript);resumeHandle=session.resume_handle||undefined;
+   enqueue(async()=>{if(m.type!=='auth'||!/^([a-f0-9]{64})$/.test(m.token||''))throw Error('INVALID_AUTH');token=m.token;clientHash=await hashSessionKey(m.key);connectionId=crypto.randomUUID();session=await claimSession(()=>rpc('CLAIM'),()=>closed,()=>send({type:'recovering'}));transcript=new LiveTranscript(session.transcript);resumeHandle=session.resume_handle||undefined;
     timer=setTimeout(()=>enqueue(()=>stop('SESSION_TIME_LIMIT')),Math.max(0,Date.parse(session.deadline)-Date.now()));
-    heartbeat=setInterval(()=>enqueue(async()=>{await save();}),15000);saveTimer=setInterval(()=>{if(dirty)enqueue(save);},1500);await connect();});return;
+    heartbeat=setInterval(()=>enqueue(async()=>{await save();}),15000);saveTimer=setInterval(()=>{if(dirty)enqueue(save);},5000);await connect();});return;
   }
   if(!ready||ending)return;
   if(m.type==='audio'){

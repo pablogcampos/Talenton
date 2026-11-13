@@ -80,3 +80,6 @@ Referencias oficiales consultadas: [API Live](https://ai.google.dev/api/live), [
 - Railway: despliegue `99c5ac84-318d-411c-8e52-718da2248a8c`, estado SUCCESS, dominio `talent-ontech.up.railway.app`.
 - Chrome contra el dominio productivo: micrófono virtual, Gemini real, 75 buffers reproducidos, respuesta transcrita y finalización confirmada. Registro reservado: «PRUEBA Killadata - NO LLAMAR»; no se enviaron mensajes ni se usaron postulantes reales.
 - API pública: enlace válido 200 y disponible, enlace inexistente 404, origen ajeno 403, cabecera no-store.
+
+## Corrección de reconexión móvil (13/11/2026)
+Se observó una sesión ACTIVE con lease antiguo y sin cierre registrado. Los reintentos del navegador se agotaban antes de los 45 segundos del lease. El proxy espera hasta 48 segundos, sin robar una sesión activa; el cliente admite ese tiempo de recuperación. Audio agrupado en 100 ms y transcripciones enviadas sólo al cambiar, reduciendo mensajes y escrituras. No se confirmó la causa inicial del corte móvil. 12 pruebas de servidor y 7 de interfaz aprobadas; tipos y build correctos. No requiere migración. El límite total de seis minutos se conserva: una sesión vencida no se reactiva automáticamente ni se marca completada.
