@@ -34,3 +34,10 @@ it('rejects single-letter fragments and clarification requests without rejecting
  for(const text of ['C','A','¿Qué?','¿En dónde?','eh'])expect(meaningfulAnswer(text)).toBe(false);
  for(const text of ['Sí','No','Sin experiencia','Disponibilidad completa'])expect(meaningfulAnswer(text)).toBe(true);
 });
+it('off-topic and interview questions never consume clarification or advance',()=>{
+ const f=new QuestionFlow(['Experiencia']);
+ f.record(1,'OFF_TOPIC',30);expect(f.progress.index).toBe(0);expect(f.progress.retry).toBe(0);expect(f.progress.results).toEqual([]);
+ f.record(1,'UNCLEAR',40);expect(f.progress.retry).toBe(1);
+ f.record(1,'INTERVIEW_QUESTION',70);f.record(1,'OFF_TOPIC',100);expect(f.progress.retry).toBe(1);expect(f.done).toBe(false);
+ f.record(1,'UNDERSTOOD',150);expect(f.done).toBe(true);
+});
