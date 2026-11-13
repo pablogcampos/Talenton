@@ -22,3 +22,15 @@ it('untranscribed speech permits one clarification, never a completion based on 
  expect(f.record(1,'UNCLEAR',0,1).accepted).toBe(false);
  f.record(1,'UNCLEAR',0,2);expect(f.progress.index).toBe(1);expect(f.done).toBe(false);
 });
+it('covers future topics only from literal candidate evidence and skips them later',()=>{
+ const f=new QuestionFlow(['Experiencia','Disponibilidad','Motivación']);const transcript=[{speaker:'candidate',text:'Trabajé dos años en ventas y tengo disponibilidad por las tardes.'}];
+ expect(f.cover(2,'disponibilidad por las tardes',transcript).accepted).toBe(true);
+ f.record(1,'UNDERSTOOD',70);expect(f.progress.index).toBe(2);
+ expect(f.cover(3,'me gusta aprender',transcript).accepted).toBe(false);
+ expect(f.cover(3,'Me motiva crecer',[{speaker:'cinthia',text:'Me motiva crecer'}]).accepted).toBe(false);
+});
+it('rejects single-letter fragments and clarification requests without rejecting yes/no',async()=>{
+ const {meaningfulAnswer}=await import('../src/cinthiaQuestionFlow');
+ for(const text of ['C','A','¿Qué?','¿En dónde?','eh'])expect(meaningfulAnswer(text)).toBe(false);
+ for(const text of ['Sí','No','Sin experiencia','Disponibilidad completa'])expect(meaningfulAnswer(text)).toBe(true);
+});
