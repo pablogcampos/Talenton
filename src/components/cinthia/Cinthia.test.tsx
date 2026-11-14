@@ -15,7 +15,7 @@ vi.mock('../../services/cinthia',async original=>({...await original<typeof impo
 afterEach(()=>{vi.clearAllMocks();vi.restoreAllMocks();});
 it('individual WhatsApp link uses normalized phone and complete encoded message; rejects missing phone',()=>{
  const u=new URL(cinthiaWhatsapp('999 111 222','María','https://example.test/cinthia/'+'a'.repeat(64)));
- expect(u.hostname).toBe('wa.me');expect(u.pathname).toBe('/51999111222');expect(u.searchParams.get('text')).toContain('Hola, María.');expect(u.searchParams.get('text')).toContain('*Ingresa aquí para comenzar:*');expect(()=>cinthiaWhatsapp('','x','link')).toThrow('CINTHIA_PHONE_REQUIRED');
+ expect(u.hostname).toBe('wa.me');expect(u.pathname).toBe('/51999111222');expect(u.searchParams.get('text')).toContain('¡Hola, María! 👋');expect(u.searchParams.get('text')).toContain('*Inicia tu entrevista con CinthIA:*');expect(()=>cinthiaWhatsapp('','x','link')).toThrow('CINTHIA_PHONE_REQUIRED');
 });
 it('portal never starts unavailable voice, asks for no microphone, and never displays false completion',async()=>{
  mock.pub.mockResolvedValue({status:'PENDING',expires_at:'2026-12-01',completed_at:null,serviceAvailable:false,test_mode:false});

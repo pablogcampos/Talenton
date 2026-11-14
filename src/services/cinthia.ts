@@ -10,7 +10,29 @@ export type PublicInterview={status:CinthiaStatus;expires_at:string;completed_at
 export const invitationLink=(token:string)=>`${window.location.origin}/cinthia/${token}`;
 export function cinthiaWhatsapp(phone:string,name:string,link:string,test=false){
  const number=contactPhone(phone);if(!number)throw Error('CINTHIA_PHONE_REQUIRED');
- const message=`${test?'[PRUEBA CONTROLADA — no enviar a postulantes]\n\n':''}Hola${name.trim()?`, ${name.trim()}`:''}.\n\nTe contactamos del equipo de Selección.\n\nQueremos invitarte a realizar una breve entrevista virtual con *CinthIA*, nuestra asistente de inteligencia artificial.\n\nLa entrevista dura aproximadamente 5 minutos y puedes realizarla desde tu celular.\n\n*Ingresa aquí para comenzar:*\n${link}\n\nTe recomendamos estar en un ambiente tranquilo y contar con una conexión estable a internet.`;
+ const message=`${test?'[PRUEBA CONTROLADA — no enviar a postulantes]\n\n':''}¡Hola${name.trim()?`, ${name.trim()}`:''}! 👋
+
+Somos *Techcenter+*, empresa especializada en gestión comercial y soluciones de contact center.
+
+¡Queremos conocerte mejor! Hemos recibido tu interés en nuestras oportunidades laborales y queremos invitarte a dar el siguiente paso en tu postulación.
+
+🤖 *Conoce a CinthIA, nuestra entrevistadora con inteligencia artificial.*
+
+CinthIA te hará unas preguntas sencillas sobre tu experiencia, disponibilidad y preferencias laborales para que nuestro equipo de Selección pueda conocer mejor tu perfil.
+
+✅ Solo necesitas *5 minutos*.
+✅ Puedes hacerlo *desde tu celular*.
+✅ Sin desplazamientos ni esperas.
+
+*¡Tu próxima oportunidad laboral puede comenzar aquí!*
+
+👇 *Inicia tu entrevista con CinthIA:*
+
+${link}
+
+Te recomendamos buscar un lugar tranquilo y contar con una conexión estable a internet.
+
+*Techcenter+ | Conectamos talento con oportunidades.*`;
  return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
 }
 export const cinthiaAction=(lead:string,action:string,invitationId?:string)=>workerApi<Invitation>(`/api/cinthia/leads/${lead}`,{method:'POST',body:JSON.stringify({action,invitationId})});
