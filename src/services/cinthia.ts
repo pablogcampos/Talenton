@@ -1,7 +1,7 @@
 import {workerApi,WorkerApiError} from './workerApi';
 import {contactPhone,type VoicebotLead} from '../components/selection/voicebotWorkspace';
 export type CinthiaStatus='NOT_SENT'|'PREPARED'|'PENDING'|'IN_PROGRESS'|'COMPLETED'|'EXPIRED'|'CANCELLED';
-export const cinthiaLabels:Record<CinthiaStatus,string>={NOT_SENT:'No enviada',PREPARED:'Invitación preparada',PENDING:'Pendiente',IN_PROGRESS:'En proceso',COMPLETED:'Completada',EXPIRED:'Expirada',CANCELLED:'Cancelada'};
+export const cinthiaLabels:Record<CinthiaStatus,string>={NOT_SENT:'No enviada',PREPARED:'Invitación preparada',PENDING:'Enviada · pendiente de respuesta',IN_PROGRESS:'En proceso',COMPLETED:'Completada',EXPIRED:'Expirada',CANCELLED:'Cancelada'};
 export type Invitation={id:string;token:string;status:CinthiaStatus;test_mode:boolean;created_at:string;expires_at:string;updated_at:string;sent_at:string|null;started_at:string|null;completed_at:string|null;prepared_by:string;prepared_name?:string;sent_name?:string;sent_by:string|null;transcript_ref:string|null;result_ref:string|null};
 export type CinthiaRow=Pick<VoicebotLead,'id'|'full_name'|'phone'|'received_at'|'owner_auth_id'|'owner_name'>&{state:CinthiaStatus;updated_at:string|null;can_manage:boolean;invitation_id:string|null;test_mode:boolean|null};
 export type CinthiaWorkspace={canConfigure?:boolean;items:CinthiaRow[];total:number;counts:Partial<Record<CinthiaStatus,number>>|null;metrics:Record<string,number>;canFilterOwner:boolean;recruiters:{id:string;name:string}[];serverTime:string;serviceAvailable:boolean;preview:boolean};

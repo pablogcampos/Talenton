@@ -8,7 +8,7 @@
     "supabase:bootstrap": "tsx scripts/bootstrap-supabase-admin.mjs",
     "dev": "vite --port=3000 --host=0.0.0.0",
     "dev:demo": "vite --mode demo --port=3001 --host=0.0.0.0",
-    "build": "vite build",
+    "build": "vite build && node scripts/build-cinthia-preview.mjs",
     "build:demo": "vite build --mode demo",
     "check": "tsc --noEmit",
     "preview": "vite preview",

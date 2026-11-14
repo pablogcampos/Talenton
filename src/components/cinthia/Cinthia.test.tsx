@@ -54,3 +54,9 @@ it('portal preserves a diagnostic when starting voice rejects',async()=>{
  const host=document.createElement('div'),root=createRoot(host);document.body.append(host);
  try{await act(async()=>root.render(<PublicCinthiaView token={'a'.repeat(64)}/>));await act(async()=>host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Comenzar entrevista')!.click());expect(host.textContent).toContain(diagnostic);expect(host.textContent).not.toContain('¡Entrevista completada!');}finally{await act(async()=>root.unmount());host.remove();}
 });
+it('Enviadas filters confirmed pending invitations independently of prepared ones',async()=>{
+ mock.api.mockResolvedValue({items:[],total:0,counts:{PREPARED:10,PENDING:2},metrics:{},recruiters:[],serverTime:'2026-11-14T17:00:00Z'});
+ const host=document.createElement('div'),root=createRoot(host);
+ try{await act(async()=>root.render(<CinthiaView/>));const tab=[...host.querySelectorAll<HTMLButtonElement>('nav button')].find(b=>b.textContent?.startsWith('Enviadas'))!;expect(tab.textContent).toContain('2');await act(async()=>tab.click());expect(mock.api.mock.calls.at(-1)?.[0]).toContain('state=PENDING');expect(host.textContent).toContain('envío confirmado');expect(host.textContent).toContain('Marcar como enviada');}finally{await act(async()=>root.unmount());}
+});
+

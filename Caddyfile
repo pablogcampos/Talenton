@@ -44,6 +44,16 @@
         file_server
     }
 
+    # Social crawlers receive CinthIA metadata without JavaScript or private lead data.
+    handle /cinthia/* {
+        root * /app/dist
+        header Cache-Control "no-store"
+        header X-Content-Type-Options nosniff
+        encode zstd gzip
+        rewrite * /cinthia.html
+        file_server
+    }
+
     handle {
         root * /app/dist
         header Cache-Control "no-store"
