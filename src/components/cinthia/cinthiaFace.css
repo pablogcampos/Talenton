@@ -1,0 +1,14 @@
+/* Only photographic feature patches are revealed. The approved base never transforms. */
+.cinthia-face{position:relative;aspect-ratio:1;--mouth:0}
+.cinthia-base{display:block;width:100%;height:auto}
+.cinthia-eyes{position:absolute;inset:0;opacity:0;pointer-events:none}
+.cinthia-patch{position:absolute;display:block;overflow:hidden;pointer-events:none;mask-image:radial-gradient(ellipse at center,#000 55%,transparent 100%);-webkit-mask-image:radial-gradient(ellipse at center,#000 55%,transparent 100%)}
+.cinthia-patch img{position:absolute;max-width:none;height:auto}
+/* Coordinates normalized from the 512px approved image; patches aligned independently. */
+.cinthia-eye-left{left:37.5%;top:32.03%;width:12.5%;height:7.03%}
+.cinthia-eye-left img{width:800%;left:-292.19%;top:-475%}
+.cinthia-eye-right{left:53.71%;top:31.84%;width:12.5%;height:7.03%}
+.cinthia-eye-right img{width:800%;left:-428.13%;top:-475%}
+.cinthia-mouth{left:43.55%;top:46.29%;width:15.625%;height:7.03%;opacity:var(--mouth)}
+.cinthia-mouth img{width:640%;left:-282.5%;top:-663.89%}
+@media(prefers-reduced-motion:reduce){.cinthia-eyes,.cinthia-mouth{display:none}}
