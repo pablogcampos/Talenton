@@ -10,3 +10,7 @@ Referencia: https://faq.whatsapp.com/5913398998672934 (formato oficial de texto 
 ## Corrección posterior: 14/11/2026
 El usuario confirmó que WhatsApp Web también alteraba el formato prellenado. La apertura ya no transmite texto por URL. Ahora se presenta un diálogo con el mensaje íntegro y acciones explícitas de copiar y abrir el chat sin parámetro text. El usuario pega el texto y revisa antes de enviarlo. Si falla el portapapeles, el textarea permite copia manual. Este cambio evita la ruta problemática, sin atribuir el fallo a un componente no observado. No se confirmó el pegado en el cliente WhatsApp afectado.
 Validación actual: 10 pruebas, TypeScript y compilación. La preparación no registra apertura ni envío; abrir el chat registra solo apertura, y confirmar envío sigue siendo manual.
+
+## Persistencia del diálogo
+La ventana de compartir estaba alojada en CinthiaRowActions. Preparar provoca recarga; si una fila deja de cumplir el filtro o sale de la página, React desmonta la fila y su ventana. Ahora el estado vive en CinthiaView, fuera de la tabla; la ventana conserva teléfono, mensaje e invitación hasta cerrar explícitamente. Hay un acceso directo «Abrir WhatsApp» en la fila y «Abrir WhatsApp directamente» en la ventana, ambos sin texto en URL.
+Prueba de regresión: preparar, retirar la fila durante la recarga, disparar focus/actualización y comprobar que el diálogo persiste; Cerrar lo elimina. 10 pruebas pasan.
