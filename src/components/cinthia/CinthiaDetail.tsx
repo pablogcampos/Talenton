@@ -3,7 +3,7 @@ import {useEffect,useState} from 'react';
 import {VoicebotLeadDialog} from '../selection/VoicebotLeadDialog';
 import {peru,contactPhone} from '../selection/voicebotWorkspace';
 import {workerApi,getWorkerErrorMessage} from '../../services/workerApi';
-import {cinthiaAction,cinthiaWhatsapp,invitationLink,type CinthiaDetail as Detail,type Invitation} from '../../services/cinthia';
+import {cinthiaAction,cinthiaMessage,cinthiaWhatsapp,invitationLink,type CinthiaDetail as Detail,type Invitation} from '../../services/cinthia';
 import {CinthiaBadge,CinthiaAvatar,cinthiaControl as control,cinthiaPrimary as primary} from './CinthiaUI';
 const eventLabels:Record<string,string>={PREPARED:'Invitación creada',WHATSAPP_OPENED:'WhatsApp abierto (sin confirmación de entrega)',SENT:'Envío confirmado manualmente',STARTED:'Entrevista iniciada',COMPLETED:'Entrevista completada',EXPIRED:'Invitación expirada',CANCELLED:'Invitación cancelada'};
 export function CinthiaDetail({leadId,preview,available=false,onClose,onChanged,onOriginal}:{leadId:string;preview:boolean;available?:boolean;onClose:()=>void;onChanged:()=>void;onOriginal:(externalId:string)=>void}){
@@ -27,6 +27,7 @@ export function CinthiaDetail({leadId,preview,available=false,onClose,onChanged,
   }catch(e){popup?.close();setError(getWorkerErrorMessage(e));}
   finally{setBusy(false);setRevision(v=>v+1);}
  };
+ const copyMessage=async(i:Invitation)=>{try{await navigator.clipboard.writeText(cinthiaMessage(detail!.lead.full_name,invitationLink(i.token),i.test_mode));setNotice('Mensaje copiado con emojis y párrafos. Pégalo en WhatsApp.');}catch{setError('No se pudo copiar. Selecciona el mensaje completo que se muestra debajo y cópialo manualmente.');}};
  const copy=async(i:Invitation)=>{try{await navigator.clipboard.writeText(invitationLink(i.token));setNotice('Enlace copiado.');}catch{setError('No se pudo copiar. Selecciona y copia el enlace mostrado.');}};
  return <VoicebotLeadDialog busy={busy} onClose={onClose}><article className="space-y-6 p-5 sm:p-7">
  <header className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><CinthiaAvatar/><div><p className="text-xs uppercase tracking-wider text-teal-700">CinthIA · Detalle</p><h2 className="mt-1 text-xl font-semibold">{detail?.lead.full_name||'Nombre no informado'}</h2><p className="text-sm text-slate-500">{detail?.lead.phone}</p></div></div><button className={control} disabled={busy} onClick={onClose}>Cerrar</button></header>
@@ -39,7 +40,7 @@ export function CinthiaDetail({leadId,preview,available=false,onClose,onChanged,
  {!preview&&!available&&<p className="text-sm text-slate-500">Envíos deshabilitados hasta conectar el servicio de entrevistas con Gemini.</p>}
  {preview&&<p className="text-sm text-amber-800">Prueba local: utilizar únicamente con participantes de prueba autorizados.</p>}
  {inv?<><dl className="grid gap-3 text-sm sm:grid-cols-2">{[['Creada',peru(inv.created_at)],['Vigencia',peru(inv.expires_at)],['Envío confirmado',peru(inv.sent_at)],['Inicio de entrevista',peru(inv.started_at)],['Preparada por',inv.prepared_name||'Sin registro'],['Envío confirmado por',inv.sent_name||'Sin registro']].map(([k,v])=><div key={k}><dt className="text-slate-500">{k}</dt><dd>{v}</dd></div>)}</dl>
- {['PREPARED','PENDING'].includes(state)&&(preview||!inv.test_mode)&&<><label className="block text-sm">Enlace individual<input readOnly className={control+' mt-1 w-full'} value={invitationLink(inv.token)} onFocus={e=>e.target.select()}/></label><button className={control} onClick={()=>void copy(inv)}>Copiar enlace</button></>}
+ {['PREPARED','PENDING'].includes(state)&&(preview||!inv.test_mode)&&<><label className="block text-sm">Enlace individual<input readOnly className={control+' mt-1 w-full'} value={invitationLink(inv.token)} onFocus={e=>e.target.select()}/></label><button className={control} onClick={()=>void copy(inv)}>Copiar enlace</button><button className={control} onClick={()=>void copyMessage(inv)}>Copiar mensaje</button><details><summary className="cursor-pointer text-sm">Ver mensaje completo</summary><textarea aria-label="Mensaje de invitación" readOnly rows={14} className={control+' mt-2 w-full whitespace-pre-wrap'} value={cinthiaMessage(detail.lead.full_name,invitationLink(inv.token),inv.test_mode)} onFocus={e=>e.target.select()}/></details></>}
  </>:<p className="text-sm text-slate-500">No hay una invitación para este lead.</p>}
  {detail.can_manage&&<div className="flex flex-wrap gap-2">
  {['NOT_SENT','EXPIRED'].includes(state)&&<button className={primary} disabled={busy||!(preview||available)||!contactPhone(detail.lead.phone)} onClick={()=>void send('PREPARE')}>{state==='EXPIRED'?'Generar nueva invitación':'Enviar evaluación'}</button>}

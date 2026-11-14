@@ -8,9 +8,8 @@ export type CinthiaWorkspace={canConfigure?:boolean;items:CinthiaRow[];total:num
 export type CinthiaDetail={sessions?:{id:string;state:string;startedAt:string|null;completedAt:string|null;durationSeconds:number|null;model:string;transcript:import('./cinthiaVoice').VoiceSegment[];errors:{at:string;code:string}[]}[];lead:VoicebotLead;invitations:Invitation[];events:{id:string;invitation_id:string;actor_id:string|null;actor_name?:string;action:string;created_at:string}[];can_manage:boolean};
 export type PublicInterview={status:CinthiaStatus;expires_at:string;completed_at:string|null;test_mode:boolean;serviceAvailable:boolean;consentVersion?:string};
 export const invitationLink=(token:string)=>`${window.location.origin}/cinthia/${token}`;
-export function cinthiaWhatsapp(phone:string,name:string,link:string,test=false){
- const number=contactPhone(phone);if(!number)throw Error('CINTHIA_PHONE_REQUIRED');
- const message=`${test?'[PRUEBA CONTROLADA — no enviar a postulantes]\n\n':''}¡Hola${name.trim()?`, ${name.trim()}`:''}! 👋
+export function cinthiaMessage(name:string,link:string,test=false){
+ const message=`${test?'[PRUEBA CONTROLADA — no enviar a postulantes]\n\n':''}¡Hola${(name||'').trim()?`, ${(name||'').trim()}`:''}! 👋
 
 Somos *Techcenter+*, empresa especializada en gestión comercial y soluciones de contact center.
 
@@ -33,7 +32,14 @@ ${link}
 Te recomendamos buscar un lugar tranquilo y contar con una conexión estable a internet.
 
 *Techcenter+ | Conectamos talento con oportunidades.*`;
- return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
+ return message.normalize('NFC').replace(/\r\n?/g,'\n');
+}
+export function cinthiaWhatsapp(phone:string,name:string,link:string,test=false){
+ const number=contactPhone(phone);if(!number)throw Error('CINTHIA_PHONE_REQUIRED');
+ const text=encodeURIComponent(cinthiaMessage(name,link,test));
+ const mobile=typeof navigator!=='undefined'&&(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1));
+ // Avoid handing desktop text through the installed app's protocol handler.
+ return mobile?`https://wa.me/${number}?text=${text}`:`https://web.whatsapp.com/send?phone=${number}&text=${text}`;
 }
 export const cinthiaAction=(lead:string,action:string,invitationId?:string)=>workerApi<Invitation>(`/api/cinthia/leads/${lead}`,{method:'POST',body:JSON.stringify({action,invitationId})});
 export async function publicCinthia(token:string,signal?:AbortSignal):Promise<PublicInterview>{

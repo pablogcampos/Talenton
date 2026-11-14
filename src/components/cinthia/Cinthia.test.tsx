@@ -2,7 +2,7 @@
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {it,expect,vi,afterEach} from 'vitest';
-import {cinthiaWhatsapp} from '../../services/cinthia';
+import {cinthiaWhatsapp,cinthiaMessage} from '../../services/cinthia';
 import {cinthiaVoice} from '../../services/cinthiaVoice';
 import {PublicCinthiaView} from '../../views/PublicCinthiaView';
 import {CinthiaView} from '../../views/CinthiaView';
@@ -15,7 +15,7 @@ vi.mock('../../services/cinthia',async original=>({...await original<typeof impo
 afterEach(()=>{vi.clearAllMocks();vi.restoreAllMocks();});
 it('individual WhatsApp link uses normalized phone and complete encoded message; rejects missing phone',()=>{
  const u=new URL(cinthiaWhatsapp('999 111 222','María','https://example.test/cinthia/'+'a'.repeat(64)));
- expect(u.hostname).toBe('wa.me');expect(u.pathname).toBe('/51999111222');expect(u.searchParams.get('text')).toContain('¡Hola, María! 👋');expect(u.searchParams.get('text')).toContain('*Inicia tu entrevista con CinthIA:*');expect(()=>cinthiaWhatsapp('','x','link')).toThrow('CINTHIA_PHONE_REQUIRED');
+ expect(u.hostname).toBe('web.whatsapp.com');expect(u.searchParams.get('phone')).toBe('51999111222');expect(u.searchParams.get('text')).toContain('¡Hola, María! 👋');expect(u.searchParams.get('text')).toContain('*Inicia tu entrevista con CinthIA:*');expect(()=>cinthiaWhatsapp('','x','link')).toThrow('CINTHIA_PHONE_REQUIRED');
 });
 it('portal never starts unavailable voice, asks for no microphone, and never displays false completion',async()=>{
  mock.pub.mockResolvedValue({status:'PENDING',expires_at:'2026-12-01',completed_at:null,serviceAvailable:false,test_mode:false});
@@ -45,7 +45,7 @@ it('preparing opens individual WhatsApp and records opening, never confirms send
  const replace=vi.fn();vi.spyOn(window,'open').mockReturnValue({opener:null,location:{replace},close:vi.fn()} as any);
  mock.api.mockResolvedValue({id:'invitation',token:'a'.repeat(64),test_mode:true,status:'PREPARED'});
  const host=document.createElement('div'),root=createRoot(host),row={id:'lead',state:'NOT_SENT',can_manage:true,phone:'999111222',full_name:'Prueba'} as any;
- try{await act(async()=>root.render(<CinthiaRowActions row={row} preview onDetail={()=>{}} onMessage={()=>{}} onChanged={()=>{}}/>));await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Enviar evaluación')!.click());expect(replace).toHaveBeenCalledWith(expect.stringContaining('https://wa.me/51999111222?text='));expect(mock.api.mock.calls.map(c=>JSON.parse(c[1].body).action)).toEqual(['PREPARE','WHATSAPP_OPENED']);}finally{await act(async()=>root.unmount());}
+ try{await act(async()=>root.render(<CinthiaRowActions row={row} preview onDetail={()=>{}} onMessage={()=>{}} onChanged={()=>{}}/>));await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Enviar evaluación')!.click());expect(replace).toHaveBeenCalledWith(expect.stringContaining('https://web.whatsapp.com/send?phone=51999111222&text='));expect(mock.api.mock.calls.map(c=>JSON.parse(c[1].body).action)).toEqual(['PREPARE','WHATSAPP_OPENED']);}finally{await act(async()=>root.unmount());}
 });
 it('portal preserves a diagnostic when starting voice rejects',async()=>{
  mock.pub.mockResolvedValue({status:'PENDING',serviceAvailable:true,consentVersion:'cinthia-voice-v1'});
@@ -60,3 +60,14 @@ it('Enviadas filters confirmed pending invitations independently of prepared one
  try{await act(async()=>root.render(<CinthiaView/>));const tab=[...host.querySelectorAll<HTMLButtonElement>('nav button')].find(b=>b.textContent?.startsWith('Enviadas'))!;expect(tab.textContent).toContain('2');await act(async()=>tab.click());expect(mock.api.mock.calls.at(-1)?.[0]).toContain('state=PENDING');expect(host.textContent).toContain('envío confirmado');expect(host.textContent).toContain('Marcar como enviada');}finally{await act(async()=>root.unmount());}
 });
 
+it('preserves every emoji, paragraph and personalized link on desktop and mobile',()=>{
+ const link='https://example.test/cinthia/'+'a'.repeat(64);const text=cinthiaMessage(' María ',link);
+ expect(text).toContain('¡Hola, María! 👋\n\nSomos *Techcenter+*');expect(text).toContain('🤖');expect(text.match(/✅/g)).toHaveLength(3);expect(text).toContain('👇');expect(text).not.toContain('\uFFFD');expect(text).toContain('\n\n'+link+'\n\n');expect(text.split('\n\n')).toHaveLength(11);
+ expect(new URL(cinthiaWhatsapp('999111222','María',link)).searchParams.get('text')).toBe(text);
+ vi.spyOn(navigator,'userAgent','get').mockReturnValue('Mozilla/5.0 Android');const mobile=new URL(cinthiaWhatsapp('999111222','María',link));expect(mobile.hostname).toBe('wa.me');expect(mobile.searchParams.get('text')).toBe(text);expect(cinthiaMessage('',link)).toMatch(/^¡Hola! 👋/);expect(cinthiaMessage('María',link,true)).toMatch(/^\[PRUEBA CONTROLADA/);
+});
+it('copy message preserves plain text and does not mark it sent',async()=>{
+ const writeText=vi.fn().mockResolvedValue(undefined);Object.defineProperty(navigator,'clipboard',{value:{writeText},configurable:true});mock.api.mockResolvedValue({invitations:[{id:'inv',token:'a'.repeat(64),status:'PREPARED',test_mode:false}]});
+ const host=document.createElement('div'),root=createRoot(host);const row={id:'lead',state:'PREPARED',can_manage:true,invitation_id:'inv',phone:'999111222',full_name:'María'} as any;
+ try{await act(async()=>root.render(<CinthiaRowActions row={row} preview onDetail={()=>{}} onMessage={()=>{}} onChanged={()=>{}}/>));await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Copiar mensaje')!.click());expect(writeText).toHaveBeenCalledWith(cinthiaMessage('María',window.location.origin+'/cinthia/'+'a'.repeat(64)));expect(mock.api).toHaveBeenCalledTimes(1);expect(mock.api.mock.calls[0][1]).toBeUndefined();}finally{await act(async()=>root.unmount());}
+});

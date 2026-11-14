@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {workerApi,getWorkerErrorMessage} from '../../services/workerApi';
-import {cinthiaAction,cinthiaWhatsapp,invitationLink,type CinthiaRow,type CinthiaDetail} from '../../services/cinthia';
+import {cinthiaAction,cinthiaMessage,cinthiaWhatsapp,invitationLink,type CinthiaRow,type CinthiaDetail} from '../../services/cinthia';
 import {contactPhone} from '../selection/voicebotWorkspace';
 import {cinthiaControl as control} from './CinthiaUI';
 export function CinthiaRowActions({row,preview,available=false,onDetail,onMessage,onChanged}:{row:CinthiaRow;preview:boolean;available?:boolean;onDetail:()=>void;onMessage:(message:string,error?:boolean)=>void;onChanged:()=>void}){
@@ -10,10 +10,10 @@ export function CinthiaRowActions({row,preview,available=false,onDetail,onMessag
   const popup=type==='PREPARE'||type==='WHATSAPP_OPENED'?window.open('about:blank','_blank'):null;if(popup)popup.opener=null;
   if(type==='WHATSAPP_OPENED'&&!popup){onMessage('Permite ventanas emergentes o copia el enlace. No se registró una apertura de WhatsApp.');setBusy(false);return;}
   try{
-   if(type==='COPY'){
+   if(type==='COPY'||type==='COPY_MESSAGE'){
     const d=await workerApi<CinthiaDetail>('/api/cinthia/leads/'+row.id);const inv=d.invitations.find(i=>i.id===row.invitation_id);
     if(!inv||!['PREPARED','PENDING'].includes(inv.status))throw Error('CINTHIA_INVALID_STATE');
-    await navigator.clipboard.writeText(invitationLink(inv.token));onMessage('Enlace copiado.');
+    await navigator.clipboard.writeText(type==='COPY_MESSAGE'?cinthiaMessage(row.full_name,invitationLink(inv.token),inv.test_mode):invitationLink(inv.token));onMessage(type==='COPY_MESSAGE'?'Mensaje copiado con emojis y párrafos. Pégalo en WhatsApp.':'Enlace copiado.');
    }else{
     const inv=await cinthiaAction(row.id,type,row.invitation_id||undefined);
     if(type==='PREPARE'||type==='WHATSAPP_OPENED'){
@@ -29,6 +29,7 @@ export function CinthiaRowActions({row,preview,available=false,onDetail,onMessag
  {['PREPARED','PENDING'].includes(row.state)&&<>
  <button className={control} disabled={!enabled||!phone} onClick={()=>void action('WHATSAPP_OPENED')}>Abrir WhatsApp</button>
  <button className={control} disabled={busy||(!preview&&!!row.test_mode)} onClick={()=>void action('COPY')}>Copiar enlace</button>
+ <button className={control} disabled={busy||(!preview&&!!row.test_mode)} onClick={()=>void action('COPY_MESSAGE')}>Copiar mensaje</button>
  {row.state==='PREPARED'&&row.can_manage&&<button className={control} disabled={!enabled} onClick={()=>void action('SENT')}>Marcar como enviada</button>}
  </>}
  <button className={control} disabled={busy} onClick={onDetail}>{row.state==='COMPLETED'?'Ver resultado':'Ver detalle'}</button>
