@@ -41,8 +41,8 @@ export function cinthiaMessageUrl(phone:string,message:string){
  const number=contactPhone(phone);if(!number)throw Error('CINTHIA_PHONE_REQUIRED');
  const text=encodeURIComponent(message.normalize('NFC').replace(/\r\n?/g,'\n'));
  const mobile=typeof navigator!=='undefined'&&(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1));
- // Avoid handing desktop text through the installed app's protocol handler.
- return mobile?`https://wa.me/${number}?text=${text}`:`https://web.whatsapp.com/send?phone=${number}&text=${text}`;
+ // Desktop explicitly uses the installed application protocol.
+ return mobile?`https://wa.me/${number}?text=${text}`:`whatsapp://send?phone=${number}&text=${text}`;
 }
 export const cinthiaAction=(lead:string,action:string,invitationId?:string)=>workerApi<Invitation>(`/api/cinthia/leads/${lead}`,{method:'POST',body:JSON.stringify({action,invitationId})});
 export async function publicCinthia(token:string,signal?:AbortSignal):Promise<PublicInterview>{

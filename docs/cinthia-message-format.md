@@ -17,3 +17,6 @@ Prueba de regresión: preparar, retirar la fila durante la recarga, disparar foc
 
 ## Mensaje precargado solicitado
 Ambos accesos a WhatsApp vuelven a incluir phone y text: la ventana usa exactamente el texto visible, y la fila obtiene la invitación vigente antes de abrir el chat. Se mantiene copiar como alternativa por las alteraciones observadas en WhatsApp. Abrir no envía automáticamente ni marca como enviada. Prueba específica verifica teléfono normalizado, nombre, enlace personalizado y evento de apertura; la prueba de permanencia del diálogo se conserva.
+
+## Aplicación de escritorio
+Por solicitud del usuario, escritorio utiliza whatsapp://send?phone=...&text=...; móviles conservan wa.me. No redirige a WhatsApp Web. El navegador puede pedir permiso para abrir la aplicación instalada. Pruebas verifican protocolo, teléfono y texto completo. No se verificó el renderizado dentro del WhatsApp de escritorio del usuario; Copiar mensaje sigue disponible si ese cliente altera el formato.
