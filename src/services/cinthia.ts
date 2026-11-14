@@ -35,8 +35,11 @@ Te recomendamos buscar un lugar tranquilo y contar con una conexión estable a i
  return message.normalize('NFC').replace(/\r\n?/g,'\n');
 }
 export function cinthiaWhatsapp(phone:string,name:string,link:string,test=false){
+ return cinthiaMessageUrl(phone,cinthiaMessage(name,link,test));
+}
+export function cinthiaMessageUrl(phone:string,message:string){
  const number=contactPhone(phone);if(!number)throw Error('CINTHIA_PHONE_REQUIRED');
- const text=encodeURIComponent(cinthiaMessage(name,link,test));
+ const text=encodeURIComponent(message.normalize('NFC').replace(/\r\n?/g,'\n'));
  const mobile=typeof navigator!=='undefined'&&(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1));
  // Avoid handing desktop text through the installed app's protocol handler.
  return mobile?`https://wa.me/${number}?text=${text}`:`https://web.whatsapp.com/send?phone=${number}&text=${text}`;

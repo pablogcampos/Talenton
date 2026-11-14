@@ -14,3 +14,6 @@ Validación actual: 10 pruebas, TypeScript y compilación. La preparación no re
 ## Persistencia del diálogo
 La ventana de compartir estaba alojada en CinthiaRowActions. Preparar provoca recarga; si una fila deja de cumplir el filtro o sale de la página, React desmonta la fila y su ventana. Ahora el estado vive en CinthiaView, fuera de la tabla; la ventana conserva teléfono, mensaje e invitación hasta cerrar explícitamente. Hay un acceso directo «Abrir WhatsApp» en la fila y «Abrir WhatsApp directamente» en la ventana, ambos sin texto en URL.
 Prueba de regresión: preparar, retirar la fila durante la recarga, disparar focus/actualización y comprobar que el diálogo persiste; Cerrar lo elimina. 10 pruebas pasan.
+
+## Mensaje precargado solicitado
+Ambos accesos a WhatsApp vuelven a incluir phone y text: la ventana usa exactamente el texto visible, y la fila obtiene la invitación vigente antes de abrir el chat. Se mantiene copiar como alternativa por las alteraciones observadas en WhatsApp. Abrir no envía automáticamente ni marca como enviada. Prueba específica verifica teléfono normalizado, nombre, enlace personalizado y evento de apertura; la prueba de permanencia del diálogo se conserva.
