@@ -48,3 +48,5 @@ export async function publicCinthia(token:string,signal?:AbortSignal):Promise<Pu
  const response=await fetch(`${base}/api/public/cinthia/${token}`,{signal,cache:'no-store',referrerPolicy:'no-referrer'});
  const data=await response.json();if(!response.ok)throw new WorkerApiError(response.status,data.message);return data;
 }
+
+export function cinthiaChatUrl(phone:string){const url=new URL(cinthiaWhatsapp(phone,'',''));url.searchParams.delete('text');return url.toString();}

@@ -1,3 +1,4 @@
+import {CinthiaShare} from './CinthiaShare';
 import {CinthiaResult} from './CinthiaResult';
 import {useEffect,useState} from 'react';
 import {VoicebotLeadDialog} from '../selection/VoicebotLeadDialog';
@@ -9,22 +10,19 @@ const eventLabels:Record<string,string>={PREPARED:'Invitación creada',WHATSAPP_
 export function CinthiaDetail({leadId,preview,available=false,onClose,onChanged,onOriginal}:{leadId:string;preview:boolean;available?:boolean;onClose:()=>void;onChanged:()=>void;onOriginal:(externalId:string)=>void}){
  const [detail,setDetail]=useState<Detail|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[revision,setRevision]=useState(0),[confirmCancel,setConfirmCancel]=useState(false);
  useEffect(()=>{const c=new AbortController();void workerApi<Detail>('/api/cinthia/leads/'+leadId,{signal:c.signal}).then(d=>{if(!c.signal.aborted)setDetail(d);}).catch(e=>{if(!c.signal.aborted)setError(getWorkerErrorMessage(e));});return()=>c.abort();},[leadId,revision]);
+ const [share,setShare]=useState<{message:string;id:string}|null>(null);
  const inv=detail?.invitations[0],state=inv?.status||'NOT_SENT';
  const send=async(action:string)=>{
   if(busy)return;setBusy(true);setError('');setNotice('');
   // Open in the click gesture; otherwise async persistence triggers popup blockers.
-  const popup=['PREPARE','WHATSAPP_OPENED'].includes(action)?window.open('about:blank','_blank'):null;
-  if(popup)popup.opener=null;
-  if(action==='WHATSAPP_OPENED'&&!popup){setNotice('Permite ventanas emergentes o copia el enlace. No se registró una apertura de WhatsApp.');setBusy(false);return;}
   try{
-   const saved=await cinthiaAction(leadId,action,inv?.id);
+   const saved=action==='WHATSAPP_OPENED'?inv:await cinthiaAction(leadId,action,inv?.id);
+   if(!saved)throw Error('CINTHIA_INVALID_STATE');
    if(action==='PREPARE'||action==='WHATSAPP_OPENED'){
-    const url=cinthiaWhatsapp(detail!.lead.phone,detail!.lead.full_name,invitationLink(saved.token),saved.test_mode);
-    if(popup){popup.location.replace(url);if(action==='PREPARE')await cinthiaAction(leadId,'WHATSAPP_OPENED',saved.id);setNotice('WhatsApp abierto. Confirma el envío sólo después de enviar el mensaje.');}
-    else setNotice('El navegador bloqueó la ventana. La invitación se conservó; usa Abrir WhatsApp o Copiar enlace.');
+    setShare({message:cinthiaMessage(detail!.lead.full_name,invitationLink(saved.token),saved.test_mode),id:saved.id});
    }else setNotice(action==='SENT'?'Confirmación manual guardada.':'Invitación cancelada.');
    setConfirmCancel(false);onChanged();
-  }catch(e){popup?.close();setError(getWorkerErrorMessage(e));}
+  }catch(e){setError(getWorkerErrorMessage(e));}
   finally{setBusy(false);setRevision(v=>v+1);}
  };
  const copyMessage=async(i:Invitation)=>{try{await navigator.clipboard.writeText(cinthiaMessage(detail!.lead.full_name,invitationLink(i.token),i.test_mode));setNotice('Mensaje copiado con emojis y párrafos. Pégalo en WhatsApp.');}catch{setError('No se pudo copiar. Selecciona el mensaje completo que se muestra debajo y cópialo manualmente.');}};
@@ -55,5 +53,5 @@ export function CinthiaDetail({leadId,preview,available=false,onClose,onChanged,
  {detail.invitations.length>1&&<details><summary className="cursor-pointer text-sm font-semibold">Invitaciones anteriores ({detail.invitations.length-1})</summary>{detail.invitations.slice(1).map(i=><p key={i.id} className="mt-3 text-sm">{peru(i.created_at)} · <CinthiaBadge status={i.status}/></p>)}</details>}
  <section className="space-y-4"><h3 className="font-semibold">Transcripción de entrevista</h3>{detail.sessions?.length?detail.sessions.map(s=><article key={s.id} className="rounded-xl border border-slate-200 p-4"><p className="text-sm">{s.state} · {peru(s.startedAt)} · {s.durationSeconds!=null?s.durationSeconds+' s':'Sin finalizar'} · {s.model}</p><ol className="mt-3 space-y-3">{s.transcript.map(t=><li key={t.id} className="text-sm"><strong>{t.speaker==='cinthia'?'CinthIA':'Postulante'}{!t.complete?' · Transcripción incompleta':''}</strong><p className="whitespace-pre-wrap">{t.text}</p><span className="text-xs text-slate-500">{peru(t.at)} · Gemini Live</span></li>)}</ol>{s.errors.length>0&&<details className="mt-3 text-xs"><summary>Interrupciones ({s.errors.length})</summary>{s.errors.map((e,i)=><p key={i}>{peru(e.at)} · {e.code}</p>)}</details>}</article>):<p className="text-sm text-slate-500">Sin transcripciones registradas.</p>}</section><CinthiaResult/>
  </>}
- </article></VoicebotLeadDialog>;
+ {share&&detail&&<CinthiaShare phone={detail.lead.phone} message={share.message} onClose={()=>setShare(null)} onOpen={()=>{void cinthiaAction(leadId,'WHATSAPP_OPENED',share.id).then(()=>setRevision(v=>v+1)).catch(e=>setError(getWorkerErrorMessage(e)));}}/>}</article></VoicebotLeadDialog>;
 }

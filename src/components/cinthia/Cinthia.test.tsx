@@ -35,17 +35,10 @@ it('inbox starts with all leads, no campaign filters, receipt timestamps, and gu
  mock.api.mockResolvedValue({items:[{id:'1',full_name:'Prueba CI',phone:'999111222',received_at:'2026-11-13T16:00:00Z',state:'NOT_SENT',can_manage:true}],total:1,counts:{NOT_SENT:1},metrics:{available:1,pending:0,active:0,completed:0},canFilterOwner:false,recruiters:[],serverTime:'2026-11-13T16:00:00Z',preview:false});
  const host=document.createElement('div'),root=createRoot(host);try{await act(async()=>root.render(<CinthiaView/>));expect(mock.api.mock.calls[0][0]).toContain('state=&page=0');expect(host.textContent).toContain('Más recientes primero');expect(host.querySelector('time')?.dateTime).toBe('2026-11-13T16:00:00Z');expect(host.textContent).not.toContain('Campaña');expect(host.textContent).toContain('están deshabilitados');}finally{await act(async()=>root.unmount());}
 });
-it('blocked WhatsApp popup never records opening or confirms sending',async()=>{
- const open=vi.spyOn(window,'open').mockReturnValue(null),message=vi.fn();
- const host=document.createElement('div'),root=createRoot(host);
- const row={id:'lead',state:'PREPARED',can_manage:true,invitation_id:'invitation',phone:'999111222'} as any;
- try{await act(async()=>root.render(<CinthiaRowActions row={row} preview onDetail={()=>{}} onMessage={message} onChanged={()=>{}}/>));await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Abrir WhatsApp')!.click());expect(open).toHaveBeenCalled();expect(mock.api).not.toHaveBeenCalled();expect(message).toHaveBeenCalledWith(expect.stringContaining('No se registró'));}finally{await act(async()=>root.unmount());}
-});
-it('preparing opens individual WhatsApp and records opening, never confirms sending automatically',async()=>{
- const replace=vi.fn();vi.spyOn(window,'open').mockReturnValue({opener:null,location:{replace},close:vi.fn()} as any);
+it('preparing displays the exact message and opens a chat without transporting text in its URL',async()=>{
  mock.api.mockResolvedValue({id:'invitation',token:'a'.repeat(64),test_mode:true,status:'PREPARED'});
  const host=document.createElement('div'),root=createRoot(host),row={id:'lead',state:'NOT_SENT',can_manage:true,phone:'999111222',full_name:'Prueba'} as any;
- try{await act(async()=>root.render(<CinthiaRowActions row={row} preview onDetail={()=>{}} onMessage={()=>{}} onChanged={()=>{}}/>));await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Enviar evaluación')!.click());expect(replace).toHaveBeenCalledWith(expect.stringContaining('https://web.whatsapp.com/send?phone=51999111222&text='));expect(mock.api.mock.calls.map(c=>JSON.parse(c[1].body).action)).toEqual(['PREPARE','WHATSAPP_OPENED']);}finally{await act(async()=>root.unmount());}
+ try{await act(async()=>root.render(<CinthiaRowActions row={row} preview onDetail={()=>{}} onMessage={()=>{}} onChanged={()=>{}}/>));await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Enviar evaluación')!.click());expect(host.querySelector('textarea')?.value).toBe(cinthiaMessage('Prueba',window.location.origin+'/cinthia/'+'a'.repeat(64),true));const url=new URL(host.querySelector('a')!.href);expect(url.hostname).toBe('web.whatsapp.com');expect(url.searchParams.has('text')).toBe(false);expect(mock.api.mock.calls.map(c=>JSON.parse(c[1].body).action)).toEqual(['PREPARE']);}finally{await act(async()=>root.unmount());}
 });
 it('portal preserves a diagnostic when starting voice rejects',async()=>{
  mock.pub.mockResolvedValue({status:'PENDING',serviceAvailable:true,consentVersion:'cinthia-voice-v1'});
