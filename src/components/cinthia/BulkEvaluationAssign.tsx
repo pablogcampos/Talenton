@@ -1,0 +1,9 @@
+import {useEffect,useState} from 'react';
+import {workerApi,getWorkerErrorMessage} from '../../services/workerApi';
+import type {EvaluationCatalog} from './EvaluationEditor';
+import {cinthiaControl as control,cinthiaPrimary as primary} from './CinthiaUI';
+export function BulkEvaluationAssign({leadIds,onChanged}:{leadIds:string[];onChanged:()=>void}){
+ const [catalog,setCatalog]=useState<EvaluationCatalog|null>(null),[version,setVersion]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
+ useEffect(()=>{let alive=true;void workerApi<EvaluationCatalog>('/api/cinthia/catalog').then(c=>{if(alive)setCatalog(c);}).catch(e=>{if(alive)setMessage(getWorkerErrorMessage(e));});return()=>{alive=false;};},[]);
+ return <div className="flex flex-wrap items-center gap-3 rounded-xl border p-3"><label className="text-sm">CinthIA · {leadIds.length} seleccionados<select aria-label="Evaluación masiva" className={control+' ml-2'} value={version} disabled={busy} onChange={e=>setVersion(e.target.value)}><option value="">Selecciona evaluación</option>{catalog?.items.filter(i=>i.status==='PUBLISHED').map(i=>{const v=i.versions.find(v=>v.published_at);return v?<option key={v.id} value={v.id}>{catalog.companies.find(c=>c.id===i.company_id)?.name} · {i.name} · v{v.number}</option>:null;})}</select></label><button className={primary} disabled={busy||!version||!leadIds.length} onClick={async()=>{setBusy(true);let ok=0;const failed:string[]=[];for(const id of leadIds){try{await workerApi('/api/cinthia/assign',{method:'POST',body:JSON.stringify({version,lead:id})});ok++;}catch(e){failed.push(id+': '+getWorkerErrorMessage(e));}}setMessage(`${ok} asignaciones confirmadas.${failed.length?' No asignadas: '+failed.join('; '):''} Las invitaciones se envían desde la ficha de cada lead.`);setBusy(false);onChanged();}}>{busy?'Asignando…':'Asignar evaluación'}</button>{message&&<p role="status" className="w-full text-sm">{message}</p>}</div>;
+}

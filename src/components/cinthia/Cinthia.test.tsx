@@ -5,7 +5,7 @@ import {it,expect,vi,afterEach} from 'vitest';
 import {cinthiaWhatsapp,cinthiaMessage} from '../../services/cinthia';
 import {cinthiaVoice} from '../../services/cinthiaVoice';
 import {PublicCinthiaView} from '../../views/PublicCinthiaView';
-import {CinthiaView} from '../../views/CinthiaView';
+import {LegacyCinthiaInbox as CinthiaView} from '../../views/CinthiaView';
 import {CinthiaRowActions} from './CinthiaRowActions';
 const mock=vi.hoisted(()=>({api:vi.fn(),pub:vi.fn(),navigate:vi.fn()}));
 vi.mock('../../services/workerApi',()=>({workerApi:mock.api,getWorkerErrorMessage:(e:Error)=>e.message,WorkerApiError:class extends Error{constructor(_status:number,message:string){super(message);}}}));

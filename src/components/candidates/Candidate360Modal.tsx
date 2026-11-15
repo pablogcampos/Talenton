@@ -1,3 +1,4 @@
+import {SubjectEvaluations} from '../cinthia/SubjectEvaluations';
 import {VoicebotCandidateEdit} from './VoicebotCandidateEdit';
 import { candidateAvailability } from '../../utils/candidateAvailability';
 import React, { useEffect, useState } from 'react';
@@ -63,7 +64,7 @@ interface Candidate360ModalProps {
   onClose: () => void;
 }
 
-type TabType = 'resumen' | 'datos' | 'seguimiento' | 'entrevista' | 'verificacion_tecnica' | 'evaluaciones' | 'documentos' | 'historial' | 'proceso';
+type TabType = 'cinthia' | 'resumen' | 'datos' | 'seguimiento' | 'entrevista' | 'verificacion_tecnica' | 'evaluaciones' | 'documentos' | 'historial' | 'proceso';
 
 export const Candidate360Modal: React.FC<Candidate360ModalProps> = ({
   candidateId,
@@ -370,6 +371,7 @@ export const Candidate360Modal: React.FC<Candidate360ModalProps> = ({
               { id: 'resumen', label: 'Resumen', icon: FileText },
               { id: 'datos', label: 'Perfil', icon: User },
               { id: 'seguimiento', label: 'Seguimiento', icon: PhoneCall, badge: candidate.selection?.contactHistory?.length },
+              ...(['ADMIN','JEFE_SELECCION','ANALISTA_SELECCION','RECLUTADOR'].includes(currentUser.role) ? [{id:'cinthia',label:'CinthIA | Evaluaciones',icon:Sparkles}] : []),
               { id: 'entrevista', label: 'Entrevista', icon: MessageSquare },
               { id: 'verificacion_tecnica', label: 'Verificación', icon: Laptop },
               { id: 'evaluaciones', label: 'Evaluaciones', icon: Award, badge: candidate.selection?.evaluationsList?.length || candidate.selection?.evaluations?.length },
@@ -404,6 +406,7 @@ export const Candidate360Modal: React.FC<Candidate360ModalProps> = ({
 
           {/* Tab Content Body */}
           <div className="flex-1 space-y-4 overflow-y-auto p-4 custom-scrollbar sm:px-6">
+            {activeTab === 'cinthia' && <SubjectEvaluations key={candidate.id} companyId={candidate.companyId || (candidate.id.startsWith('uc.')?decodeURIComponent(candidate.id.split('.')[1]):undefined)} personId={candidate.id.startsWith('uc.')?decodeURIComponent(candidate.id.split('.').slice(2).join('.')):candidate.id} name={candidate.fullName} phone={candidate.phone}/>}
             {activeTab === 'proceso' && <SelectionAdvancedPanel candidateId={candidate.id} />}
             
             {/* TAB 1: RESUMEN */}

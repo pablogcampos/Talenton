@@ -1,3 +1,5 @@
+import {EvaluationWorkspace} from '../components/cinthia/EvaluationWorkspace';
+export function CinthiaView(){return <EvaluationWorkspace/>;}
 import {CinthiaShare} from '../components/cinthia/CinthiaShare';
 import {cinthiaAction} from '../services/cinthia';
 import {CinthiaSettings} from '../components/cinthia/CinthiaSettings';
@@ -12,7 +14,7 @@ import {CinthiaAvatar,CinthiaBadge,cinthiaControl as control,cinthiaPrimary as p
 import {CinthiaDetail} from '../components/cinthia/CinthiaDetail';
 const empty={search:'',owner:'',from:'',to:'',interviewFrom:'',interviewTo:''};
 const tabs=[['','Todos'],['NOT_SENT','No enviadas'],['PREPARED','Invitación preparada'],['PENDING','Enviadas'],['IN_PROGRESS','En proceso'],['COMPLETED','Completadas'],['CLOSED','Expiradas / Canceladas']];
-export function CinthiaView(){
+export function LegacyCinthiaInbox(){
  const {setActiveModule}=useTalent();
  const [share,setShare]=useState<{phone:string;message:string;id:string;leadId:string}|null>(null);
  const [data,setData]=useState<CinthiaWorkspace|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[actionError,setActionError]=useState(''),[loading,setLoading]=useState(true),[draft,setDraft]=useState(empty),[filters,setFilters]=useState(empty),[tab,setTab]=useState(''),[page,setPage]=useState(0),[revision,setRevision]=useState(0),[selected,setSelected]=useState(''),[picked,setPicked]=useState<string[]>([]);

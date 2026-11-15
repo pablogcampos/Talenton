@@ -2,9 +2,13 @@ name = "talentcc-api"
 main = "src/index.ts"
 compatibility_date = "2026-08-29"
 
+[triggers]
+crons = ["* * * * *"]
+
 [vars]
 DATA_PROVIDER = "supabase"
 CINTHIA_LIVE_MODEL = "gemini-3.8-live"
+CINTHIA_SCORING_MODEL = "gemini-3.8-flash"
 CINTHIA_LIVE_ENABLED = "true"
 CINTHIA_LIVE_VALIDATED = "true"
 ORG_ENABLED = "true"

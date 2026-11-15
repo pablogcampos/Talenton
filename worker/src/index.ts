@@ -1,3 +1,4 @@
+import {processCinthiaReport} from './cinthiaScoring';
 import {VoiceFault,cinthiaSocket} from './cinthiaLive';
 import {handleCinthia,cinthiaPreview} from './cinthia';
 import {handleVoicebot} from './voicebot';
@@ -19,6 +20,7 @@ export interface Env extends SupabaseEnv, RuntimeEnv {
   CINTHIA_DEV_PREVIEW?: string;
   GEMINI_API_KEY?: string;
   CINTHIA_LIVE_MODEL?: string;
+  CINTHIA_SCORING_MODEL?: string;
   CINTHIA_LIVE_ENABLED?: string;
   CINTHIA_LIVE_VALIDATED?: string;
   VERIFIED_SESSION?: SessionProfile;
@@ -1343,7 +1345,7 @@ async function relationalBootstrap(request:Request,env:Env,actor:Profile) {
   return response({campaigns,cohorts,candidates,users},200,cors(request,env));
 }
 
-const worker={async fetch(request:Request,env:Env):Promise<Response>{
+const worker={async scheduled(_event:ScheduledController,env:Env,ctx:ExecutionContext){ctx.waitUntil(Promise.all(Array.from({length:3},()=>processCinthiaReport(env))));},async fetch(request:Request,env:Env):Promise<Response>{
   const path=new URL(request.url).pathname;
   const adminTraining=path.match(/^\/api\/trainings\/([^/]+)\/admin-action$/);
   if(adminTraining&&request.method==='POST'){

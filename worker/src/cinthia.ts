@@ -1,6 +1,7 @@
 import {cinthiaRpc,hashSessionKey,liveAvailable,liveModel,type CinthiaLiveEnv} from './cinthiaLive';
 import {relationalSession} from './supabaseSession';
 import {SupabaseError} from './supabase';
+import {evaluationIssues,validEvaluationShape,newEvaluation} from '../../shared/cinthiaEvaluation';
 
 type CinthiaEnv=CinthiaLiveEnv;
 // A deployed Worker can never enable the development invitation flow.
@@ -24,10 +25,48 @@ export async function handleCinthia(request:Request,env:CinthiaEnv){
    const session=await rpc('talent_cinthia_session',{p_token:token[1],p_action:'BEGIN',p_test:preview,p_data:{clientHash,consent:d.consent===true,consentVersion:d.consentVersion,model:liveModel(env)}});
    return {sessionId:session.id,deadline:session.deadline};
   }
-  return {...data,serviceAvailable:available,consentVersion:'cinthia-voice-v1'};
+  return {...data,...await rpc('talent_cinthia_public_metadata',{p_token:token[1]}),serviceAvailable:available,consentVersion:'cinthia-voice-v1'};
  }
  if(url.pathname.startsWith('/api/public/cinthia/'))throw new SupabaseError(404,'CINTHIA_NOT_FOUND');
  const actor=await relationalSession(request,{...env,ORG_ENABLED:'false'});
+ if(url.pathname==='/api/cinthia/tests'&&request.method==='GET')return rpc('talent_cinthia_test_history',{p_actor:actor.authUserId,p_evaluation:url.searchParams.get('evaluation')});
+ if(url.pathname==='/api/cinthia/runtime'){
+  if(request.method==='GET')return {...await rpc('talent_cinthia_runtime',{p_actor:actor.authUserId}),liveModel:liveModel(env)};
+  if(request.method!=='PUT')throw new SupabaseError(405,'METHOD_NOT_ALLOWED');
+  const text=await request.text();if(text.length>10000)throw new SupabaseError(413,'CINTHIA_INVALID');
+  let d:any;try{d=JSON.parse(text);}catch{throw new SupabaseError(400,'CINTHIA_INVALID');}
+  if(!d?.config||typeof d.config.instructions!=='string'||d.config.instructions.length>4000||!['Kore','Aoede','Puck','Charon','Fenrir'].includes(d.config.voice)||![d.config.maxMinutes,d.config.maxFollowups,d.config.retentionDays,d.revision].every(Number.isInteger))throw new SupabaseError(400,'CINTHIA_INVALID');
+  return rpc('talent_cinthia_runtime',{p_actor:actor.authUserId,p_config:d.config,p_revision:d.revision});
+ }
+ if(url.pathname==='/api/cinthia/calibration'&&request.method==='GET')return rpc('talent_cinthia_calibration',{p_actor:actor.authUserId});
+ if(url.pathname==='/api/cinthia/analytics'&&request.method==='GET')return rpc('talent_cinthia_analytics',{p_actor:actor.authUserId});
+ if(url.pathname==='/api/cinthia/subject'&&request.method==='GET')return rpc('talent_cinthia_subject',{p_actor:actor.authUserId,p_company:url.searchParams.get('company'),p_person:url.searchParams.get('person'),p_lead:url.searchParams.get('lead')});
+ if(url.pathname==='/api/cinthia/assign'||url.pathname==='/api/cinthia/invitation'){
+  if(request.method!=='POST')throw new SupabaseError(405,'METHOD_NOT_ALLOWED');
+  const text=await request.text();if(text.length>20000)throw new SupabaseError(413,'CINTHIA_INVALID');
+  let d:any;try{d=JSON.parse(text);}catch{throw new SupabaseError(400,'CINTHIA_INVALID');}
+  if(url.pathname.endsWith('/invitation'))return rpc('talent_cinthia_invitation_action',{p_actor:actor.authUserId,p_id:d.id,p_action:d.action,p_data:d.data||{}});
+  if(!available)throw new SupabaseError(503,'CINTHIA_UNAVAILABLE');
+  if(d.test===true){const catalog=await rpc('talent_cinthia_catalog',{p_actor:actor.authUserId});const v=catalog.items.flatMap((e:any)=>e.versions).find((v:any)=>v.id===d.version);try{if(!v||evaluationIssues(v.config).length)throw Error();}catch{throw new SupabaseError(400,'CINTHIA_CONFIG_INCOMPLETE');}}
+  const token=Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
+  return rpc('talent_cinthia_assign',{p_actor:actor.authUserId,p_version:d.version,p_token:token,p_person:d.person||null,p_lead:d.lead||null,p_test:d.test===true,p_repeat:d.repeat===true});
+ }
+ if(url.pathname==='/api/cinthia/catalog'){
+  if(request.method==='GET')return rpc('talent_cinthia_catalog',{p_actor:actor.authUserId});
+  if(request.method!=='POST')throw new SupabaseError(405,'METHOD_NOT_ALLOWED');
+  const text=await request.text();if(text.length>100000)throw new SupabaseError(413,'CINTHIA_INVALID');
+  let d:any;try{d=JSON.parse(text);}catch{throw new SupabaseError(400,'CINTHIA_INVALID');}
+  if(!['SAVE','DUPLICATE','PUBLISH','INACTIVE','ARCHIVED','BANK'].includes(d?.action))throw new SupabaseError(400,'CINTHIA_INVALID');
+  if(['SAVE','DUPLICATE'].includes(d.action)&&!validEvaluationShape(d.data?.config))throw new SupabaseError(400,'CINTHIA_INVALID');
+  if(d.action==='BANK'&&!validEvaluationShape({...newEvaluation(),competencies:[d.data?.content?.competency],activities:d.data?.content?.activities||[]}))throw new SupabaseError(400,'CINTHIA_INVALID');
+  if(d.action==='PUBLISH'){
+   const catalog=await rpc('talent_cinthia_catalog',{p_actor:actor.authUserId});
+   const version=catalog.items.find((e:any)=>e.id===d.id)?.versions.find((v:any)=>!v.published_at);
+   if(!version||version.revision!==d.data?.revision)throw new SupabaseError(409,'CINTHIA_CONFLICT');
+   try{if(evaluationIssues(version.config).length)throw Error();}catch{throw new SupabaseError(400,'CINTHIA_CONFIG_INCOMPLETE');}
+  }
+  return rpc('talent_cinthia_evaluation_save',{p_actor:actor.authUserId,p_action:d.action,p_id:d.id||null,p_data:d.data||{}});
+ }
  if(url.pathname==='/api/cinthia/settings'){
   if(request.method==='GET')return rpc('talent_cinthia_settings',{p_actor:actor.authUserId});
   if(request.method!=='PUT')throw new SupabaseError(405,'METHOD_NOT_ALLOWED');

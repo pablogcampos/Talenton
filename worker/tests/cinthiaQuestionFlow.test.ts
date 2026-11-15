@@ -1,5 +1,15 @@
 import {it,expect} from 'vitest';
 import {QuestionFlow} from '../src/cinthiaQuestionFlow';
+it('preserves essential activities and bounds adaptive followups across reconnects',()=>{
+ const f=new QuestionFlow(['Experiencia','Caso práctico'],undefined,[false,true],1);
+ expect(f.cover(2,'Resolví el caso',[{speaker:'candidate',text:'Resolví el caso'}]).accepted).toBe(false);
+ expect(f.record(1,'FOLLOWUP',20).accepted).toBe(true);
+ const resumed=new QuestionFlow(f.questions,JSON.parse(JSON.stringify(f.progress)),[false,true],1);
+ expect(resumed.record(1,'FOLLOWUP',40).accepted).toBe(false);
+ expect(resumed.record(1,'UNDERSTOOD',40).accepted).toBe(true);
+ expect(resumed.progress.index).toBe(1);
+ expect(resumed.done).toBe(false);
+});
 it('allows exactly one clarification, then advances without inventing an answer',()=>{
  const f=new QuestionFlow(['Experiencia','Disponibilidad']);
  expect(f.record(1,'UNCLEAR',10)).toMatchObject({accepted:true,finished:false});expect(f.progress.retry).toBe(1);
