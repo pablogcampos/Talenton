@@ -9,18 +9,26 @@ export function CinthiaFace({motion=true,readMouth}:{motion?:boolean;readMouth?:
  useEffect(()=>{
   const element=host.current!;
   const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)');
-  let timer:ReturnType<typeof setTimeout>,frame=0,animation:Animation|undefined,dead=false,level=0,last=0;
+  let timer:ReturnType<typeof setTimeout>,frame=0,animation:Animation|undefined,dead=false,level=0,last=0,open=false;
   const eyes=element.querySelector<HTMLElement>('.cinthia-eyes')!;
-  const reset=()=>{clearTimeout(timer);cancelAnimationFrame(frame);animation?.cancel();level=0;element.style.setProperty('--mouth','0');};
+  const reset=()=>{clearTimeout(timer);cancelAnimationFrame(frame);animation?.cancel();level=0;open=false;element.dataset.mouth='closed';element.style.setProperty('--mouth','0');};
   const allowed=()=>motion&&!reduced?.matches&&!document.hidden&&!dead;
   const schedule=()=>{timer=setTimeout(()=>{
    if(!allowed())return;
    const duration=120+Math.random()*80;
-   const blink=()=>eyes.animate([{opacity:0,offset:0},{opacity:1,offset:.42},{opacity:1,offset:.58},{opacity:0,offset:1}],{duration,easing:'ease-in-out'});
+   // Reveal opaque eyelids downwards instead of dissolving two sets of eyes.
+   const blink=()=>eyes.animate([{clipPath:'inset(0 0 100% 0)',offset:0},{clipPath:'inset(0)',offset:.35},{clipPath:'inset(0)',offset:.5},{clipPath:'inset(0 0 100% 0)',offset:1}],{duration,easing:'ease-in-out'});
    animation=blink();
    animation.onfinish=()=>{if(!allowed())return;if(Math.random()<.12){timer=setTimeout(()=>{if(!allowed())return;animation=blink();animation.onfinish=schedule;},90);}else schedule();};
   },3000+Math.random()*4000);};
-  const tick=(now:number)=>{if(!allowed())return;if(now-last>=32){level=smoothMouth(level,reader.current?.()||0,now-last);element.style.setProperty('--mouth',level.toFixed(3));last=now;}frame=requestAnimationFrame(tick);};
+  const tick=(now:number)=>{if(!allowed())return;if(now-last>=16){
+   const sample=reader.current?.()||0;
+   level=smoothMouth(level,sample,now-last);
+   // Hysteresis avoids switching expressions on every tiny waveform fluctuation.
+   open=sample>0&&(open?level>.045:level>.09);
+   element.dataset.mouth=open?'open':'closed';
+   element.style.setProperty('--mouth',level.toFixed(3));last=now;
+  }frame=requestAnimationFrame(tick);};
   const restart=()=>{reset();if(allowed()){last=performance.now();schedule();frame=requestAnimationFrame(tick);}};
   reduced?.addEventListener('change',restart);document.addEventListener('visibilitychange',restart);restart();
   return()=>{dead=true;reset();reduced?.removeEventListener('change',restart);document.removeEventListener('visibilitychange',restart);};
