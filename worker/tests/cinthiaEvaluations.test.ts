@@ -82,3 +82,23 @@ it('runtime edits require admin and test executions stay outside candidate metri
  expect(await rpc('talent_cinthia_test_history',{p_actor:admin,p_evaluation:evaluation})).toHaveLength(1);
  await expect(rpc('talent_cinthia_test_history',{p_actor:recruiter,p_evaluation:evaluation})).rejects.toMatchObject({code:'42501'});
 });
+it('lists catalog campaigns instead of recruitment groups and assigns across their convocatorias',async()=>{
+ await db.exec(`insert into talent_org.global_campaigns(id,name) values('global-bitel','Migraciones Bitel QA');
+ insert into talent_org.company_campaigns(company_id,id,global_campaign_id) values('eval-ci','catalog-bitel','global-bitel'),('eval-other','other-bitel','global-bitel');
+ update talent.campaigns set company_campaign_id='catalog-bitel' where company_id='eval-ci' and id='staff-campaign';
+ insert into talent.campaigns(company_id,id,code,title,status,vacancies,company_campaign_id) values('eval-ci','second-group','GROUP-2','G - 22 MIGRACIONES BITEL','ACTIVA',1,'catalog-bitel');`);
+ const catalog=await rpc('talent_cinthia_catalog',{p_actor:admin});
+ expect(catalog.campaigns).toEqual([{id:'catalog-bitel',companyId:'eval-ci',name:'Migraciones Bitel QA'}]);
+ const cfg={...config,campaignId:'catalog-bitel'};
+ const created=await rpc('talent_cinthia_evaluation_save',{p_actor:admin,p_action:'SAVE',p_data:{config:cfg}});
+ await rpc('talent_cinthia_evaluation_save',{p_actor:admin,p_action:'PUBLISH',p_id:created.evaluation.id,p_data:{revision:1}});
+ const first=await rpc('talent_cinthia_assign',{p_actor:admin,p_version:created.version.id,p_person:'staff-person',p_token:'1'.repeat(64)});
+ expect(first.application_id).toBe('staff-app');
+ await rpc('talent_cinthia_invitation_action',{p_actor:admin,p_id:first.id,p_action:'CANCELLED'});
+ await db.exec("insert into talent.persons(company_id,id,full_name,document_number) values('eval-ci','second-person','QA Second','99900002'); insert into talent.applications(company_id,id,person_id,campaign_id,recruiter_id,status,stage,application_date) select company_id,'second-app','second-person','second-group',recruiter_id,'ACTIVA','Captación',current_date from talent.applications where company_id='eval-ci' and id='staff-app'");
+ const second=await rpc('talent_cinthia_assign',{p_actor:admin,p_version:created.version.id,p_person:'second-person',p_token:'2'.repeat(64)});
+ expect(second.application_id).toBe('second-app');
+ await expect(rpc('talent_cinthia_evaluation_save',{p_actor:admin,p_action:'SAVE',p_data:{config:{...config,campaignId:'second-group'}}})).rejects.toMatchObject({code:'42501'});
+ await expect(rpc('talent_cinthia_evaluation_save',{p_actor:admin,p_action:'SAVE',p_data:{config:{...config,campaignId:'other-bitel'}}})).rejects.toMatchObject({code:'42501'});
+});
+

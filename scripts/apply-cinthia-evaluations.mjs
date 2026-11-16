@@ -1,7 +1,7 @@
 import {readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import pg from 'pg';
-const names=["202611150001_cinthia_evaluations.sql","202611150002_cinthia_assignments.sql","202611150003_cinthia_reports.sql","202611150004_cinthia_controls.sql","202611150005_cinthia_legacy_isolation.sql","202611150006_cinthia_calibration.sql"];
+const names=["202611150001_cinthia_evaluations.sql","202611150002_cinthia_assignments.sql","202611150003_cinthia_reports.sql","202611150004_cinthia_controls.sql","202611150005_cinthia_legacy_isolation.sql","202611150006_cinthia_calibration.sql","202611150007_cinthia_campaign_catalog.sql"];
 const execute=process.argv.includes('--execute');
 const api=new URL(process.env.SUPABASE_URL),database=new URL(process.env.SUPABASE_DATABASE_URL),project=api.hostname.split('.')[0];
 if(project!=='gvwaqlvphvfzhnhlnuuv'||api.hostname!==project+'.supabase.co'||!(database.hostname==='db.'+project+'.supabase.co'||database.hostname.endsWith('.pooler.supabase.com')&&decodeURIComponent(database.username)==='postgres.'+project))throw Error('PROJECT_ROUTING_MISMATCH');

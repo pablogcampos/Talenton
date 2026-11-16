@@ -57,3 +57,10 @@ No ejecutar las migraciones históricas indiscriminadamente ni restaurar tablas 
 - Dependencia de disponibilidad/cuotas de Gemini. Los informes fallidos conservan transcripción y código de error; máximo tres intentos, sin inventar resultados.
 - Las rúbricas requieren validación profesional. La calibración muestra consistencia observada, no certifica validez predictiva ni autoriza decisiones automáticas.
 - El build mantiene el aviso preexistente de tamaño del paquete PDF de propuestas, fuera del alcance de CinthIA.
+
+## Corrección de catálogo y plantillas predeterminadas
+- Migración `202611150007_cinthia_campaign_catalog.sql`: selector usa `talent_org.company_campaigns` y nombres de `global_campaigns`; las asignaciones resuelven la convocatoria actual a su campaña comercial. Mantiene controles de empresa/campaña. Aplicada y validada.
+- `shared/cinthiaTemplates.ts`: entrevista Voicebot conserva las preguntas configuradas; prueba comunicativa de 3 minutos, 2 actividades esenciales, sin seguimientos adicionales, claridad 40%, coherencia 35%, cohesión 25%.
+- Ambas publicadas en Talent Up, Techcenter y Konectados sin asignarlas automáticamente a personas. Acceso conforme a permisos existentes. La predeterminada queda preseleccionada al elegir empresa desde la ficha del lead.
+- Tono y dicción requieren observación humana en vivo: no se puntúan a partir de texto ni se guardan grabaciones. Esta parte no se presenta como medición automática implementada.
+- Validación adicional: 10 pruebas de PostgreSQL/plantillas, 3 React y comprobación de tipos frontend/Worker.
