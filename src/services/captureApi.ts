@@ -15,7 +15,7 @@ export const captureApi = {
   remove: (id: string, companyId: string) => workerApi(`/api/capture/links/${encodeURIComponent(id)}`, { method: 'DELETE' }, companyId),
   manage: (id: string, status: string, note: string) => workerApi(`/api/capture/events/${id}`, { method: 'PATCH', body: JSON.stringify({ status, note }) }),
   dossier: (id: string) => workerApi<CaptureDossier>(`/api/capture/candidates/${encodeURIComponent(id)}`),
-  exportAll: () => workerApi<{ items: CaptureEvent[]; total: number }>('/api/capture/export'),
+  exportAll: () => workerApi<{ items: CaptureEvent[]; total: number; candidates: import('../types').CandidateRecord[]; candidateTotal: number }>('/api/capture/export'),
 };
 export async function publicCaptureApi<T>(token: string, input?: object,files?:Record<string,File>): Promise<T> {
   const base = (import.meta.env.VITE_ADMIN_API_URL || import.meta.env.VITE_WORKER_API_URL)?.replace(/\/$/, '');

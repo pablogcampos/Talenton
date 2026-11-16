@@ -36,8 +36,10 @@ export async function unifiedRequest(request:Request,env:Env,dispatch:Dispatch):
   }
   if(path==='/api/capture/management')return Response.json({owners:merge('owners'),links:merge('links'),events:merge('events'),generatedAt:new Date().toISOString()});
   if(path==='/api/capture/export'){
+   for(const chunk of chunks)if(chunk && (chunk.data.items?.length!==chunk.data.total || chunk.data.candidates?.length!==chunk.data.candidateTotal))throw new SupabaseError(502,'UNIFIED_READ_FAILED');
    const items=chunks.flatMap(chunk=>(chunk?.data.items||[]).map((event:any)=>({...event,candidateId:candidateKey(chunk!.company.companyId,event.candidateId),companyName:actor.companies?.find(c=>c.id===chunk!.company.companyId)?.name||event.companyName})));
-   return Response.json({items,total:items.length});
+   const candidates=merge('candidates');
+   return Response.json({items,total:items.length,candidates,candidateTotal:candidates.length});
   }
   return Response.json({items:merge('items'),truncated:chunks.some(c=>c?.data.truncated)});
  }

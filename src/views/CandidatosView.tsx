@@ -61,15 +61,19 @@ export const CandidatosView: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [exportSuccess, setExportSuccess] = useState('');
   const canExportForms = ['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION', 'RECLUTADOR'].includes(currentUser.role);
 
   const handleExportForms = async () => {
-    setExporting(true); setExportError('');
+    setExporting(true); setExportError(''); setExportSuccess('');
     try {
       const result = await captureApi.exportAll();
       if (result.items.length !== result.total) throw new Error('La consulta de formularios quedó incompleta. No se descargó un archivo parcial.');
+      if (!Array.isArray(result.candidates) || result.candidates.length !== result.candidateTotal || new Set(result.candidates.map(c => c.id)).size !== result.candidateTotal) throw new Error('La consulta de candidatos quedó incompleta. No se descargó un archivo parcial.');
       const { downloadXlsx } = await import('../utils/xlsxExport');
-      downloadXlsx(buildCandidateFormSheets(scopedCandidates, result.items), `talent-on-formularios-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      const sheets = buildCandidateFormSheets(result.candidates, result.items);
+      downloadXlsx(sheets, `talent-on-formularios-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      setExportSuccess(`Excel generado: ${sheets[0].rows.length} candidatos y ${result.total} formularios. Incluye todos los registros autorizados, sin limitarse a los filtros o a la página visible.`);
     } catch (error) {
       setExportError(getWorkerErrorMessage(error, 'No se pudo exportar la información completa de los formularios.'));
     } finally { setExporting(false); }
@@ -129,6 +133,7 @@ export const CandidatosView: React.FC = () => {
         </div>
       </section>
       {exportError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-700">{exportError}</p>}
+      {exportSuccess && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-800">{exportSuccess}</p>}
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(260px,1.6fr)_minmax(190px,1fr)_minmax(180px,0.9fr)_auto]">

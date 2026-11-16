@@ -134,9 +134,10 @@ export async function handleCapture(request: Request, env: Env, actor: Actor | u
     );
   };
   if (path === '/api/capture/export' && request.method === 'GET') {
-    const [events, people] = await Promise.all([
+    const [events, people, campaigns] = await Promise.all([
       store.queryAll('captations', { companyId: actor!.companyId }),
       store.queryAll('candidates', { companyId: actor!.companyId }),
+      store.queryAll('campaigns', { companyId: actor!.companyId }),
     ]);
     const byId = new Map(people.map(person => [person.id, person]));
     const supervised = actor!.role === 'ANALISTA_SELECCION' ? new Set((await managerOwners()).map(user => user.uid)) : new Set<string>();
@@ -151,7 +152,11 @@ export async function handleCapture(request: Request, env: Env, actor: Actor | u
           attachments: (event.applicant.formSubmission.attachments || []).map(({ objectKey, ...attachment }: Data) => attachment),
         } } : {}),
       } }));
-    return reply({ items, total: items.length });
+    const assignedCampaigns = new Set(campaigns.filter(c => actor!.role === 'RECLUTADOR' && c.assignedUserIds?.includes(actor!.uid)).map(c => c.id));
+    const candidates = people.filter(c => actor!.role === 'ADMIN' || actor!.role === 'JEFE_SELECCION' ||
+      actor!.role === 'RECLUTADOR' && (c.recruiterId === actor!.uid || assignedCampaigns.has(c.campaignId)) ||
+      actor!.role === 'ANALISTA_SELECCION' && (c.analystId === actor!.uid || actor!.scope?.includes(String(c.campaignId))));
+    return reply({ items, total: items.length, candidates, candidateTotal: candidates.length });
   }
   if (path === '/api/capture/management' && request.method === 'GET') {
     if (!actor || !['ADMIN', 'ANALISTA_SELECCION'].includes(actor.role)) throw new CaptureError('FORBIDDEN', 403);

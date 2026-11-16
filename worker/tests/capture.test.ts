@@ -160,6 +160,19 @@ describe('Captación', () => {
     const analyst = await (await call('/api/capture/export', 'GET', undefined, { ...owner, role: 'ANALISTA_SELECCION', uid: 'analyst', subordinateUserIds: [owner.uid] }))!.json() as any;
     expect(analyst.total).toBe(205);
   });
+  it('exporta más de 2001 candidatos, incluidos registros manuales, sin revelar otros responsables', async () => {
+    for(let i=0;i<2010;i++)documents.set(`candidates/manual-${i}`,{companyId:owner.companyId,recruiterId:owner.uid,fullName:`Persona ${i}`});
+    documents.set('candidates/other',{companyId:owner.companyId,recruiterId:'other'});
+    documents.set('candidates/foreign',{companyId:'other-company',recruiterId:owner.uid});
+    documents.set('campaigns/assigned',{companyId:owner.companyId,assignedUserIds:[owner.uid]});
+    documents.set('candidates/shared',{companyId:owner.companyId,recruiterId:'other',campaignId:'assigned'});
+    const result=await (await call('/api/capture/export'))!.json() as any;
+    expect(result.candidateTotal).toBe(2011);
+    expect(result.candidates).toHaveLength(2011);
+    expect(result.candidates.some((c:any)=>c.id==='manual-2009')).toBe(true);
+    expect(result.candidates.some((c:any)=>['other','foreign'].includes(c.id))).toBe(false);
+    expect(result.items).toEqual([]);
+  });
   it('admin ve consolidado global y responsables de distintas empresas', async () => {
     documents.set('users/other', { role: 'RECLUTADOR', companyId: 'company-2', displayName: 'Otro responsable' });
     documents.set('captations/foreign', { companyId: 'company-2', ownerUid: 'other', applicant: {}, possibleIds: ['candidate'] });

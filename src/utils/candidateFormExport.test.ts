@@ -23,6 +23,15 @@ const oldEvent = {
 } as CaptureEvent;
 
 describe('exportación completa de formularios', () => {
+  it('incluye todos los candidatos en el archivo, aun sin captaciones y por encima de 2001 filas', () => {
+    const people=Array.from({length:2010},(_,i)=>({...candidate,id:`candidate-${i}`,fullName:`Persona ${i}`}));
+    const sheets=buildCandidateFormSheets(people,[]);
+    const files=unzipSync(createXlsx(sheets));
+    const xml=strFromU8(files['xl/worksheets/sheet1.xml']);
+    expect(sheets[0].rows).toHaveLength(2010);
+    expect(xml.match(/<row /g)).toHaveLength(2011);
+    expect(xml).toContain('Persona 2009');
+  });
   it('muestra hora peruana, conserva cada envío y resume el último sin inventar fechas', () => {
     const latest = {...formEvent, id: 'latest', createdAt: '2026-11-06T02:15:30Z'};
     const noForm = {...candidate, id: 'without-form', applicationDate: '2026-11-06'};
