@@ -16,8 +16,7 @@ import {
   AlertCircle,
   Upload
 } from 'lucide-react';
-import { UserProfile, UserRole, AppModuleName, CompanyAccess } from '../../types';
-import { UserCompanyAccess } from '../common/UserCompanyAccess';
+import { UserProfile, UserRole, AppModuleName } from '../../types';
 import { getWorkerErrorMessage } from '../../services/workerApi';
 import { useTalent } from '../../context/TalentContext';
 import { IdentityAvatar } from '../common/IdentityAvatar';
@@ -143,7 +142,6 @@ export const UserModal: React.FC<UserModalProps> = ({
   userToEdit
 }) => {
   const { campaigns, availableUsers, addUser, updateUser, currentUser } = useTalent();
-  const [companyAccess,setCompanyAccess]=useState<CompanyAccess[]>();
   const [saving,setSaving]=useState(false);
 
   const [name, setName] = useState('');
@@ -155,7 +153,6 @@ export const UserModal: React.FC<UserModalProps> = ({
   const [role, setRole] = useState<UserRole>('ANALISTA_SELECCION');
   const [status, setStatus] = useState<'ACTIVO' | 'INACTIVO'>('ACTIVO');
   const [allowedModules, setAllowedModules] = useState<AppModuleName[]>(['SELECCION', 'FORMACION']);
-  const [scopeCampaignIds, setScopeCampaignIds] = useState<string[]>([]);
   const [subordinateUserIds, setSubordinateUserIds] = useState<string[]>([]);
   const [avatarUrl, setAvatarUrl] = useState(DEFAULT_AVATARS[0]);
   const [nickname, setNickname] = useState('');
@@ -174,7 +171,6 @@ export const UserModal: React.FC<UserModalProps> = ({
       setRole(userToEdit.role || 'ANALISTA_SELECCION');
       setStatus(userToEdit.status || 'ACTIVO');
       setAllowedModules(['JEFE_OPERACIONES','COORDINADOR_OPERACIONES'].includes(userToEdit.role) ? ['OPERACIONES'] : userToEdit.allowedModules || getDefaultModulesForRole(userToEdit.role));
-      setScopeCampaignIds(userToEdit.scopeCampaignIds || []);
       setSubordinateUserIds(userToEdit.subordinateUserIds || []);
       setAvatarUrl(userToEdit.avatarUrl || DEFAULT_AVATARS[0]);
       setNickname(userToEdit.nickname || '');
@@ -189,7 +185,6 @@ export const UserModal: React.FC<UserModalProps> = ({
       setRole('ANALISTA_SELECCION');
       setStatus('ACTIVO');
       setAllowedModules(getDefaultModulesForRole('ANALISTA_SELECCION'));
-      setScopeCampaignIds([]);
       setSubordinateUserIds([]);
       setAvatarUrl(DEFAULT_AVATARS[Math.floor(Math.random() * DEFAULT_AVATARS.length)]);
       setNickname('');
@@ -204,9 +199,7 @@ export const UserModal: React.FC<UserModalProps> = ({
     setRole(newRole);
     // Auto populate default modules when role changes unless user already customized
     setAllowedModules(getDefaultModulesForRole(newRole));
-    if (newRole === 'JEFE_OPERACIONES' || newRole === 'COORDINADOR_OPERACIONES') {
-      setCompanyAccess(current => current?.map(grant => ({ ...grant, role: newRole, allCampaigns: false, scopes: [] })));
-    }
+
     
     // Auto suggest job title
     if (!userToEdit) {
@@ -260,13 +253,7 @@ export const UserModal: React.FC<UserModalProps> = ({
     setErrorMsg(null);
   };
 
-  const toggleCampaign = (campId: string) => {
-    if (scopeCampaignIds.includes(campId)) {
-      setScopeCampaignIds(scopeCampaignIds.filter(id => id !== campId));
-    } else {
-      setScopeCampaignIds([...scopeCampaignIds, campId]);
-    }
-  };
+
 
   const toggleSubordinate = (userId: string) => {
     if (subordinateUserIds.includes(userId)) {
@@ -292,7 +279,6 @@ export const UserModal: React.FC<UserModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if(saving)return;
-    if(currentUser.globalAdmin&&(!companyAccess||!companyAccess.some(c=>c.enabled)||companyAccess.some(c=>c.enabled&&!['JEFE_OPERACIONES','COORDINADOR_OPERACIONES'].includes(c.role)&&!c.allCampaigns&&!c.scopes.length))){setErrorMsg('Selecciona al menos una empresa y sus campañas. Espera a que termine la carga de permisos.');return;}
     const cleanName = sanitizeDisplayName(name, '');
     if (!cleanName || !email.trim() || !/^\d{8}$/.test(dni.trim())) {
       setErrorMsg('Nombre, usuario y DNI de 8 dígitos son obligatorios.');
@@ -316,10 +302,10 @@ export const UserModal: React.FC<UserModalProps> = ({
         role,
         status,
         allowedModules,
-        scopeCampaignIds,
+        scopeCampaignIds: [],
         subordinateUserIds,
         avatarUrl,
-        ...(currentUser.globalAdmin?{companyAccess}:{}),
+
         nickname: sanitizeDisplayName(nickname, ''),
         tagline: sanitizeDisplayName(tagline, '')
         });
@@ -337,10 +323,10 @@ export const UserModal: React.FC<UserModalProps> = ({
         role,
         status,
         allowedModules,
-        scopeCampaignIds,
+        scopeCampaignIds: [],
         subordinateUserIds,
         avatarUrl,
-        ...(currentUser.globalAdmin?{companyAccess}:{}),
+
         nickname: sanitizeDisplayName(nickname, ''),
         tagline: sanitizeDisplayName(tagline, ''),
         password,
@@ -574,7 +560,7 @@ export const UserModal: React.FC<UserModalProps> = ({
             </div>
           </div>
 
-          {currentUser.globalAdmin&&<UserCompanyAccess userId={userToEdit?.authUserId||userToEdit?.id} defaultRole={role} value={companyAccess} onChange={setCompanyAccess}/>}
+          <p className="text-xs text-slate-500">Acceso a todas las empresas y campañas. Los permisos se definen por el rol y las secciones habilitadas.</p>
           {/* Role selection */}
           <div className="space-y-2">
             <label className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center justify-between">
@@ -673,43 +659,6 @@ export const UserModal: React.FC<UserModalProps> = ({
             </div>
           </div>
 
-          {/* Scope: Convocatorias Asignadas (Optional) */}
-          <div className="space-y-2 pt-2 border-t border-slate-100">
-            <label className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-slate-600" />
-                Alcance Operativo: Convocatorias Asignadas ({scopeCampaignIds.length})
-              </span>
-              <span className="text-2xs text-slate-400 font-normal">
-                (Opcional - Si no se selecciona ninguna, aplica el alcance general del rol)
-              </span>
-            </label>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
-              {campaigns.map(camp => {
-                const isSelected = scopeCampaignIds.includes(camp.id);
-                return (
-                  <div
-                    key={camp.id}
-                    onClick={() => toggleCampaign(camp.id)}
-                    className={`p-2 rounded-lg border text-left cursor-pointer transition-all ${
-                      isSelected
-                        ? 'border-sky-500 bg-sky-50 text-sky-900 font-semibold'
-                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-2xs">
-                      <span className="font-mono text-slate-500">{camp.code}</span>
-                      {isSelected && <Check className="w-3 h-3 text-sky-600" />}
-                    </div>
-                    <div className="text-xs font-bold truncate">{camp.title}</div>
-                    <div className="text-2xs text-slate-500 truncate">{camp.client || camp.company}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Subordinates: Equipo a cargo (For Jefes/Coordinadores/Analistas) */}
           {(role === 'JEFE_SELECCION' || role === 'ANALISTA_SELECCION' || role === 'JEFE_FORMACION' || role === 'COORDINADOR_FORMACION' || role === 'ADMIN') && (
             <div className="space-y-2 pt-2 border-t border-slate-100">
@@ -755,7 +704,7 @@ export const UserModal: React.FC<UserModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={saving||isProcessingPhoto||(currentUser.globalAdmin&&!companyAccess)}
+              disabled={saving||isProcessingPhoto}
               className="px-5 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 active:bg-sky-800 rounded-xl shadow-md shadow-sky-600/20 transition-all cursor-pointer flex items-center gap-1.5"
             >
               <Check className="w-4 h-4" />

@@ -201,7 +201,7 @@ function campaignAllowed(profile: Profile, campaignData: Record<string, unknown>
   if (profile.role === 'ADMIN') return true;
   if (campaignData.companyId !== profile.companyId) return false;
   if (profile.role === 'JEFE_SELECCION') return true;
-  if (profile.role === 'RECLUTADOR') return Array.isArray(campaignData.assignedUserIds) && campaignData.assignedUserIds.includes(profile.uid);
+  if (profile.role === 'RECLUTADOR') return profile.scope.includes(String(campaignData.id)) || Array.isArray(campaignData.assignedUserIds) && campaignData.assignedUserIds.includes(profile.uid);
   if (profile.role !== 'ANALISTA_SELECCION') return false;
   const analystId = typeof campaignData.assignedAnalystId === 'string' ? campaignData.assignedAnalystId : '';
   return analystId === profile.uid || profile.scope.includes(String(campaignData.id ?? ''));
@@ -1036,6 +1036,8 @@ async function writeAdminAudit(env: Env, actor: Profile, action: string, entityI
 }
 
 function userCompanyGrants(env:Env,input:Record<string,unknown>):unknown[]|undefined{
+  // Company access is derived by the database, never selected by the client.
+  if(env.ORG_ENABLED==='true'&&env.RELATIONAL_ACTOR?.globalAdmin)return [];
   if(input.companyAccess===undefined)return;
   if(env.ORG_ENABLED!=='true'||!env.RELATIONAL_ACTOR?.globalAdmin)throw new SupabaseError(403,'FORBIDDEN');
   if(!Array.isArray(input.companyAccess)||input.companyAccess.length>100||input.companyAccess.some(g=>!g||typeof g.companyId!=='string'||typeof g.enabled!=='boolean'||typeof g.allCampaigns!=='boolean'||!Array.isArray(g.scopes)||g.scopes.some((s:unknown)=>typeof s!=='string')||!modulesByRole[g.role as Role]))throw new SupabaseError(400,'ORG_VALIDATION_FAILED');
