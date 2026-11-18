@@ -280,8 +280,8 @@ export const UserModal: React.FC<UserModalProps> = ({
     e.preventDefault();
     if(saving)return;
     const cleanName = sanitizeDisplayName(name, '');
-    if (!cleanName || !email.trim() || !/^\d{8}$/.test(dni.trim())) {
-      setErrorMsg('Nombre, usuario y DNI de 8 dígitos son obligatorios.');
+    if (!cleanName || !email.trim() || (dni.trim() !== '' && !/^\d{8}$/.test(dni.trim()))) {
+      setErrorMsg('Nombre y usuario son obligatorios. Si indicas DNI, debe tener 8 dígitos.');
       return;
     }
 
@@ -477,8 +477,8 @@ export const UserModal: React.FC<UserModalProps> = ({
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">DNI <span className="text-rose-500">*</span></label>
-                <input type="text" inputMode="numeric" pattern="[0-9]{8}" maxLength={8} required value={dni} onChange={e=>setDni(e.target.value.replace(/\D/g,''))} placeholder="8 dígitos" className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800" />
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">DNI (opcional para cuentas genéricas)</label>
+                <input type="text" inputMode="numeric" pattern="[0-9]{8}" maxLength={8} value={dni} onChange={e=>setDni(e.target.value.replace(/\D/g,''))} placeholder="8 dígitos" className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800" />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

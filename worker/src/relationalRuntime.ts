@@ -195,8 +195,8 @@ export class RelationalRuntime {
   const [root,id,child,childId]=path.split('/');
   if(root==='users'){
    this.base('profiles',id,d,{auth_user_id:id,display_name:d.displayName||d.name||d.username,status:d.status||'ACTIVO',enabled:d.enabled!==false});
-   if(d.module||d.allowedModules){const keep:string[]=[];for(const m of d.allowedModules||d.module){const k=id+':module:'+m;keep.push(k);this.put('user_modules',k,{user_id:id,module:m,archived_at:null});}this.archiveMissing('user_modules','user_id',id,keep);}
-   if(d.scope){const keep:string[]=[];for(const c of d.scope){if(c===this.companyId)continue;const k=id+':scope:'+c;keep.push(k);this.put('campaign_assignments',k,{campaign_id:c,user_id:id,assignment_kind:'SCOPE',archived_at:null});}for(const a of this.relate('campaign_assignments','user_id',id).filter(a=>a.assignment_kind==='SCOPE'))if(!keep.includes(a.id))this.put('campaign_assignments',a.id,{archived_at:new Date().toISOString()});}
+   if(d.module||d.allowedModules){const keep:string[]=[];for(const m of d.allowedModules||d.module){const k=this.rows('user_modules').find(r=>r.user_id===id&&r.module===m)?.id||id+':module:'+m;keep.push(k);this.put('user_modules',k,{user_id:id,module:m,archived_at:null});}this.archiveMissing('user_modules','user_id',id,keep);}
+   if(d.scope){const keep:string[]=[];for(const c of d.scope){if(c===this.companyId)continue;const k=this.rows('campaign_assignments').find(r=>r.user_id===id&&r.campaign_id===c&&r.assignment_kind==='SCOPE')?.id||id+':scope:'+c;keep.push(k);this.put('campaign_assignments',k,{campaign_id:c,user_id:id,assignment_kind:'SCOPE',archived_at:null});}for(const a of this.relate('campaign_assignments','user_id',id).filter(a=>a.assignment_kind==='SCOPE'))if(!keep.includes(a.id))this.put('campaign_assignments',a.id,{archived_at:new Date().toISOString()});}
    if(d.subordinateUserIds){const keep=d.subordinateUserIds.map((u:string)=>id+':sub:'+u);d.subordinateUserIds.forEach((u:string)=>this.put('supervision',id+':sub:'+u,{supervisor_id:id,subordinate_id:u,archived_at:null}));this.archiveMissing('supervision','supervisor_id',id,keep);}return;
   }
   if(root==='campaigns'){

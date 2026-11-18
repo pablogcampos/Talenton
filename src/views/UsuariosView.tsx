@@ -81,8 +81,8 @@ export const UsuariosView: React.FC = () => {
       await toggleUserStatus(user.id);
       const newStatus = user.status === 'INACTIVO' ? 'Activado' : 'Desactivado';
       showNotification(`Usuario "${user.name}" ${newStatus}.`, 'success');
-    } catch {
-      showNotification('No fue posible actualizar el estado.', 'error');
+    } catch (error) {
+      showNotification(error instanceof Error ? error.message : 'No fue posible actualizar el estado.', 'error');
     }
   };
 

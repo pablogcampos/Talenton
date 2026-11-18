@@ -1054,7 +1054,7 @@ async function createUser(request: Request, env: Env, actor: Profile) {
   const role = typeof input.role === 'string' ? input.role as Role : undefined;
   const status = input.status === undefined ? 'ACTIVO' : input.status;
   if (!validUsername(username)) throw new Error('El usuario debe tener entre 3 y 32 caracteres: letras, números, punto, guion o guion bajo.');
-  if (!displayName || !/^\d{8}$/.test(dni) || !role || !modulesByRole[role] || !['ACTIVO', 'INACTIVO'].includes(String(status)) || password.length < 8) throw new Error('Datos de usuario inválidos. El DNI debe tener 8 dígitos y la contraseña al menos 8 caracteres.');
+  if (!displayName || (dni !== '' && !/^\d{8}$/.test(dni)) || !role || !modulesByRole[role] || !['ACTIVO', 'INACTIVO'].includes(String(status)) || password.length < 8) throw new Error('Datos de usuario inválidos. El DNI, si se indica, debe tener 8 dígitos y la contraseña al menos 8 caracteres.');
   if ((await userIdsByUsername(env, username)).length) throw new Error('El nombre de usuario ya está en uso.');
   const authEmail = authEmailForUsername(username);
   let authData = await authUserByEmail(env, authEmail);
@@ -1147,7 +1147,7 @@ async function updateUser(request: Request, env: Env, actor: Profile, uid: strin
   });
   await firestoreServerWrite(env, `users/${uid}`, {
     ...(rawUsername ? { username } : {}),
-    ...(dni ? { dni } : {}),
+    ...(input.dni !== undefined ? { dni } : {}),
     ...(displayName ? { displayName, name: displayName } : {}),
     ...(nickname !== undefined ? { nickname } : {}),
     ...(tagline !== undefined ? { tagline } : {}),
