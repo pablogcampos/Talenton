@@ -313,7 +313,7 @@ async function createCandidate(request: Request, env: Env, actor: Profile) {
   const safeInput: Record<string, unknown> = { ...candidatePreferences(input) };
   for (const field of allowedFields) if (input[field] !== undefined) safeInput[field] = input[field];
   const data = { ...safeInput, id, dni, companyId: actor.companyId, campaignId, recruiterId, recruiterName, analystId: campaignData.assignedAnalystId ?? '', analystName: campaignData.assignedAnalystName ?? '', applicationDate: typeof input.applicationDate === 'string' ? input.applicationDate : date, currentProcess: 'SELECCION', currentStage: 'SELECCION', selection: { callId: campaignId, stage: 'NUEVO', status: 'ACTIVO', traceability, contactHistory: [], evaluations: [], evaluationsList: [] }, createdAt: now.toISOString(), createdBy: actor.uid };
-  await firestore(env, `candidates/${id}`, 'PATCH', { fields: fields(data) }); return response(data, 201, cors(request, env));
+  await firestore(env, `candidates/${id}`, 'PATCH', { fields: fields(data) }); env.RELATIONAL_RUNTIME?.markCandidateCreation(); return response(data, 201, cors(request, env));
 }
 async function candidateStage(request: Request, env: Env, actor: Profile, id: string) {
   const current = await candidate(env, id); requireSelectionUser(actor); if (!await candidateAllowedWithAssignment(env, actor, current)) throw new Error('FORBIDDEN'); const input = await request.json<{ stage?: unknown; discardReason?: unknown; discardDetail?: unknown; observation?: unknown; date?: unknown; time?: unknown }>();

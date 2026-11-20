@@ -140,6 +140,7 @@ const WORKER_ERROR_MESSAGES: Record<string, string> = {
   LAST_GLOBAL_ADMIN_REQUIRED: 'Debes conservar al menos un administrador global activo.',
   GLOBAL_ADMIN_ROLE_REQUIRED: 'Un administrador global debe conservar el rol ADMIN; no se permite degradarlo desde esta pantalla.',
   IDENTITY_SERVICE_NOT_CONFIGURED: 'El servicio privado de identidad está pendiente de configuración. Contacta al administrador.',
+  DUPLICATE_CANDIDATE: 'Este documento ya tiene un postulante registrado. Búscalo en Candidatos; no se creó un duplicado.',
   DUPLICATE_RECORD: 'Ya existe un registro con esos datos.',
   CAPTURE_RETRY: 'Los datos cambiaron mientras guardabas. Actualiza e inténtalo nuevamente.',
   CV_NOT_FOUND: 'El candidato no tiene un CV disponible.',

@@ -28,6 +28,8 @@ export class RelationalRuntime {
  private snapshot!:Snapshot;
  private changed=new Map<string,{table:string;row:D;expected:number|null}>();
  private documents=new Map<string,D>();
+ private candidateCreation=false;
+ markCandidateCreation(){this.candidateCreation=true;}
  private resetIds=new Set<string>();
  private companyGrants?:{userId:string;grants:unknown[]};
  setCompanyGrants(userId:string,grants:unknown[]){this.companyGrants={userId,grants};}
@@ -39,9 +41,9 @@ export class RelationalRuntime {
  private hash:string|null=null;
  private async rpc<T>(name:string,data:D):Promise<T>{
   const r=await fetch(this.env.SUPABASE_URL!.replace(/\/$/,'')+'/rest/v1/rpc/'+name,{method:'POST',headers:supabaseServerHeaders(this.env),body:JSON.stringify(data)});
-  if(!r.ok){const e=await r.json<{code?:string;message?:string}>().catch(()=>({} as any));const codes:Record<string,string>={PT409:'CAPTURE_RETRY','23505':'DUPLICATE_RECORD','23503':'RELATED_RECORD_INVALID','23514':'DATA_VALIDATION_FAILED','23502':'DATA_VALIDATION_FAILED','22007':'INVALID_DATA_FORMAT','22008':'INVALID_DATA_FORMAT','22P02':'INVALID_DATA_FORMAT'};throw new SupabaseError(e.code==='PT409'||e.code==='23505'?409:r.status,({VOICEBOT_CONVERSION_FORBIDDEN:'VOICEBOT_CONVERSION_FORBIDDEN',VOICEBOT_ALREADY_CONVERTED:'VOICEBOT_ALREADY_CONVERTED',VOICEBOT_CONVERSION_NOT_READY:'VOICEBOT_CONVERSION_NOT_READY',OFFER_SIGNATURES_PENDING:'OFFER_SIGNATURES_PENDING',TALENT_LAST_GLOBAL_ADMIN_REQUIRED:'LAST_GLOBAL_ADMIN_REQUIRED',TALENT_GLOBAL_ADMIN_ROLE_REQUIRED:'GLOBAL_ADMIN_ROLE_REQUIRED'} as Record<string,string>)[e.message||'']||codes[e.code||'']||(e.message==='PASSWORD_CHANGE_REQUIRED'?'PASSWORD_CHANGE_REQUIRED':'RELATIONAL_WRITE_FAILED'));}
+  if(!r.ok){const e=await r.json<{code?:string;message?:string}>().catch(()=>({} as any));const codes:Record<string,string>={PT409:'CAPTURE_RETRY','23505':'DUPLICATE_RECORD','23503':'RELATED_RECORD_INVALID','23514':'DATA_VALIDATION_FAILED','23502':'DATA_VALIDATION_FAILED','22007':'INVALID_DATA_FORMAT','22008':'INVALID_DATA_FORMAT','22P02':'INVALID_DATA_FORMAT'};throw new SupabaseError(e.code==='PT409'||e.code==='23505'?409:r.status,({DUPLICATE_CANDIDATE:'DUPLICATE_CANDIDATE',RECRUITER_NOT_AVAILABLE:'RECRUITER_NOT_AVAILABLE',RELATED_RECORD_INVALID:'RELATED_RECORD_INVALID',VOICEBOT_CONVERSION_FORBIDDEN:'VOICEBOT_CONVERSION_FORBIDDEN',VOICEBOT_ALREADY_CONVERTED:'VOICEBOT_ALREADY_CONVERTED',VOICEBOT_CONVERSION_NOT_READY:'VOICEBOT_CONVERSION_NOT_READY',OFFER_SIGNATURES_PENDING:'OFFER_SIGNATURES_PENDING',TALENT_LAST_GLOBAL_ADMIN_REQUIRED:'LAST_GLOBAL_ADMIN_REQUIRED',TALENT_GLOBAL_ADMIN_ROLE_REQUIRED:'GLOBAL_ADMIN_ROLE_REQUIRED'} as Record<string,string>)[e.message||'']||codes[e.code||'']||(e.message==='PASSWORD_CHANGE_REQUIRED'?'PASSWORD_CHANGE_REQUIRED':'RELATIONAL_WRITE_FAILED'));}
   // PostgREST returns an empty body for the void commit RPC.
-  if(name==='talent_runtime_commit'||name==='talent_org_user_commit')return undefined as T;
+  if(name==='talent_runtime_commit'||name==='talent_org_user_commit'||name==='talent_candidate_create_commit')return undefined as T;
   return r.json<T>();
  }
  async load(){this.hash=this.publicToken?await digest(this.publicToken):null;this.snapshot=this.actorId&&this.env.ORG_ENABLED==='true'?await this.rpc('talent_org_snapshot',{p_actor:this.actorId,p_company:this.env.ORG_COMPANY}):await this.rpc('talent_runtime_snapshot',{p_actor:this.actorId,p_public_hash:this.hash});return this;}
@@ -186,7 +188,8 @@ export class RelationalRuntime {
   items.sort((a,b)=>priority(a[0])-priority(b[0]));
   for(const [path,data]of items)await this.serialize(path,data);
   const commit={p_actor:this.actorId,p_company:this.companyId,p_revision:this.snapshot.revision,p_rows:Array.from(this.changed.values()),p_resets:Array.from(this.resetIds)};
-  if(this.companyGrants)await this.rpc('talent_org_user_commit',{...commit,p_user:this.companyGrants.userId,p_grants:this.companyGrants.grants});
+  if(this.candidateCreation)await this.rpc('talent_candidate_create_commit',{p_actor:this.actorId,p_company:this.companyId,p_rows:commit.p_rows});
+  else if(this.companyGrants)await this.rpc('talent_org_user_commit',{...commit,p_user:this.companyGrants.userId,p_grants:this.companyGrants.grants});
   else await this.rpc('talent_runtime_commit',{...commit,p_public_hash:this.hash});
   this.committed=true;
   for(const work of this.authAfterCommit)await work();
