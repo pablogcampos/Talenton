@@ -1,3 +1,7 @@
+import { CandidateTransfer } from '../candidates/CandidateTransfer';
+import { CaptureLinkToCampaign } from '../candidates/CaptureLinkToCampaign';
+import { captureApi } from '../../services/captureApi';
+import type { CandidateRecord } from '../../types';
 import { workerUpload } from '../../services/workerApi';
 import React, { useEffect, useState } from 'react';
 import { 
@@ -59,14 +63,16 @@ export const CandidateCreateModal: React.FC<CandidateCreateModalProps> = ({
   const [createdCandidateId, setCreatedCandidateId] = useState<string|null>(null);
   const [observations, setObservations] = useState('');
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [duplicateCandidate,setDuplicateCandidate]=useState<CandidateRecord|null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (isOpen) { setDuplicateWarning(null); setCreatedCandidateId(null); }
+    if (isOpen) { setDuplicateWarning(null); setDuplicateCandidate(null); setCreatedCandidateId(null); }
     if (isOpen && defaultCampaignId) setCampaignId(defaultCampaignId);
     if (isOpen && currentUser.role === 'RECLUTADOR') setRecruiterId(currentUser.id);
   }, [isOpen, defaultCampaignId, currentUser.id, currentUser.role]);
   useEffect(() => { if (isOpen) setAge(''); }, [isOpen]);
+  useEffect(()=>{setDuplicateWarning(null);setDuplicateCandidate(null);},[campaignId]);
 
   useEffect(()=>{if(isOpen&&voicebotLead){setSource('Otro');setFirstName(voicebotLead.full_name);setLastName('');setPhone(voicebotLead.phone.replace(/\D/g,'').replace(/^51(?=\d{9}$)/,''));setDistrict(voicebotLead.district||'');setObservations(voicebotLead.experience?'Experiencia declarada: '+voicebotLead.experience:'');}},[isOpen,voicebotLead?.id]);
   if (!isOpen) return null;
@@ -75,11 +81,12 @@ export const CandidateCreateModal: React.FC<CandidateCreateModalProps> = ({
   const recruiterLocked = currentUser.role === 'RECLUTADOR';
 
   const handleDniChange = (val: string) => {
-    setDni(val);
+    setDni(val);setDuplicateCandidate(null);
     if (val.length >= 8) {
       const dup = checkDuplicateCandidate(val, phone,undefined,selectedCampaign?.companyId);
       if (dup.isDuplicate) {
-        setDuplicateWarning(dup.reason || 'DNI duplicado detectado');
+        setDuplicateCandidate(dup.matchedCandidate||null);
+      setDuplicateWarning(dup.reason || 'DNI duplicado detectado');
       } else {
         setDuplicateWarning(null);
       }
@@ -89,11 +96,12 @@ export const CandidateCreateModal: React.FC<CandidateCreateModalProps> = ({
   };
 
   const handlePhoneChange = (val: string) => {
-    setPhone(val);
+    setPhone(val);setDuplicateCandidate(null);
     if (val.length >= 9) {
       const dup = checkDuplicateCandidate(dni, val,undefined,selectedCampaign?.companyId);
       if (dup.isDuplicate) {
-        setDuplicateWarning(dup.reason || 'Teléfono duplicado detectado');
+        setDuplicateCandidate(dup.matchedCandidate||null);
+      setDuplicateWarning(dup.reason || 'Teléfono duplicado detectado');
       } else {
         setDuplicateWarning(null);
       }
@@ -106,8 +114,9 @@ export const CandidateCreateModal: React.FC<CandidateCreateModalProps> = ({
     if (!firstName.trim() || !lastName.trim() || !dni.trim() || !phone.trim() || !Number.isInteger(Number(age)) || Number(age) < 1 || Number(age) > 120) return;
 
     // Check duplicate
-    const dup = createdCandidateId ? {isDuplicate:false,reason:undefined} : checkDuplicateCandidate(dni, phone,undefined,selectedCampaign?.companyId);
+    const dup = createdCandidateId ? {isDuplicate:false,reason:undefined,matchedCandidate:undefined} : checkDuplicateCandidate(dni, phone,undefined,selectedCampaign?.companyId);
     if (dup.isDuplicate) {
+      setDuplicateCandidate(dup.matchedCandidate||null);
       setDuplicateWarning(dup.reason || 'No se puede registrar un postulante duplicado');
       return;
     }
@@ -155,6 +164,10 @@ export const CandidateCreateModal: React.FC<CandidateCreateModalProps> = ({
         openCandidate360(res.candidate.id);
       } else if (res.message) {
         setDuplicateWarning(getWorkerErrorMessage(new Error(res.message),'No se pudo registrar al postulante.'));
+        if(res.message==='DUPLICATE_CANDIDATE'){
+          const result=await captureApi.exportAll();
+          setDuplicateCandidate(result.candidates.find(c=>c.dni===dni.trim()&&c.companyId===selectedCampaign?.companyId)||null);
+        }
       }
     } catch (error) {
       setDuplicateWarning(getWorkerErrorMessage(error, 'No se pudo registrar al postulante. Inténtalo nuevamente.'));
@@ -169,6 +182,7 @@ export const CandidateCreateModal: React.FC<CandidateCreateModalProps> = ({
   return (
     <div className="talent-modal-overlay fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#0C1E35]/70 p-3 backdrop-blur-sm sm:p-5">
       <div className="talent-modal-shell my-auto flex max-h-[94vh] w-full max-w-[1220px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        {duplicateWarning&&duplicateCandidate&&<div className="px-6 py-3 text-sm"><p className="mb-2">Reutiliza el registro existente; conserva su historial.</p>{duplicateCandidate.captureOnly?<CaptureLinkToCampaign candidateId={duplicateCandidate.id} companyId={duplicateCandidate.companyId}/>:<CandidateTransfer candidate={duplicateCandidate} direct onTransferred={onClose}/>}</div>}
         <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-5 sm:px-7">
           <div className="flex items-center gap-4">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700"><UserPlus className="h-6 w-6" /></span>

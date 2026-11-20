@@ -71,3 +71,11 @@ describe('exportación completa de formularios', () => {
     expect(responses).toContain('Pregunta personalizada');
   });
 });
+
+it('exporta jornada y turno del formulario también para candidatos manuales y captación sin vincular',()=>{
+ const event={...formEvent,applicant:{...formEvent.applicant,techCenterAnswers:{workday:'Full time',availability:'Turno tarde'}}};
+ const [sheet]=buildCandidateFormSheets([candidate],[event, {...oldEvent,applicant:{...oldEvent.applicant,techCenterAnswers:{workday:'Semi full',availability:'Turno mañana'}}}]);
+ expect(sheet.rows[0][sheet.headers.indexOf('Horario / jornada')]).toBe('Full time');
+ expect(sheet.rows[0][sheet.headers.indexOf('Turno / horario elegido')]).toBe('Turno tarde');
+ expect(sheet.rows[1][sheet.headers.indexOf('Turno / horario elegido')]).toBe('Turno mañana');
+});

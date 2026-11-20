@@ -87,15 +87,16 @@ export function PublicCaptureView({ token }: { token: string }) {
     let cancelled = false;
     const failed = (code?:string) => { if (!cancelled) { setChallenge(''); setSecurityError(captureSecurityMessage(typeof code==='string'?code:undefined)); } };
     const scriptFailed=()=>failed();
-    const watchdog=setTimeout(()=>{if(!widgetId.current)failed();},15000);
+    let verified=false;
+    const watchdog=setTimeout(()=>{if(!verified)failed();},30000);
     const init = () => {
       const api = (window as unknown as { turnstile?: Turnstile }).turnstile;
       if (!cancelled && api && widget.current && !widgetId.current) {
         try {
           widgetId.current = api.render(widget.current, {
             sitekey, action: 'capture',
-            callback: (value: string) => { if (!cancelled) { setChallenge(value); setSecurityError(''); } },
-            'expired-callback': () => { if (!cancelled) setChallenge(''); },
+            callback: (value: string) => { if (!cancelled) { verified=true;clearTimeout(watchdog);setChallenge(value); setSecurityError(''); } },
+            'expired-callback': () => { if (!cancelled) {setChallenge('');setSecurityError('La verificación venció. Pulsa Reintentar verificación; tus respuestas se conservan.');} },
             'error-callback': failed,
           });
         } catch { failed(); }

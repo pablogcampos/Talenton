@@ -1,3 +1,4 @@
+import { candidateAvailability } from './candidateAvailability';
 import { formatCaptureTime } from './captureTime';
 import type { CandidateRecord } from '../types';
 import type { CaptureEvent } from '../services/captureApi';
@@ -90,6 +91,12 @@ export function buildCandidateFormSheets(candidates: CandidateRecord[], events: 
     if (!Number.isFinite(Date.parse(event.createdAt))) continue;
     const previous = latestByCandidate.get(event.candidateId);
     if (!previous || Date.parse(event.createdAt) > Date.parse(previous.createdAt)) latestByCandidate.set(event.candidateId, event);
+  }
+  candidatesSheet.headers.push('Turno / horario elegido');
+  for (const row of candidatesSheet.rows) {
+    const matching=events.filter(event=>event.candidateId===row[1]&&(!row[0]||!event.companyId||event.companyId===row[0]||event.companyName===row[0]));
+    const availability=candidateAvailability(matching,String(row[23]||''));
+    row[23]=availability.workday;row.push(availability.shift);
   }
   candidatesSheet.headers.push('Última respuesta del formulario (hora de Perú)');
   for (const row of candidatesSheet.rows) {

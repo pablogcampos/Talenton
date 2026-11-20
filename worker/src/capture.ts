@@ -104,11 +104,13 @@ export async function body(request: Request, limit=8192): Promise<Data> {
   try { const data = JSON.parse(raw); if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(); return data; } catch { throw new CaptureError('INVALID_BODY'); }
 }
 async function challenge(request: Request, env: Env, input: Data) {
+  if(env.CAPTURE_VERIFICATION?.verified)return;
   if (!env.CAPTURE_HASH_SECRET || !env.TURNSTILE_SECRET_KEY) throw new CaptureError('Captación pública pendiente de configuración.', 503);
   const result = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: new URLSearchParams({ secret: env.TURNSTILE_SECRET_KEY, response: text(input.turnstileToken, 2048), remoteip: request.headers.get('cf-connecting-ip') || '', idempotency_key: input.requestId }) });
   const verified = await result.json<{ success?: boolean; hostname?: string; action?: string }>();
   const hostnames = [env.ALLOWED_ORIGIN, env.PRODUCTION_ORIGIN].flatMap(s => (s || '').split(',')).map(s => { try { return new URL(s.trim()).hostname; } catch { return ''; } });
   if (!result.ok || !verified.success || verified.action !== 'capture' || !hostnames.includes(verified.hostname || '')) throw new CaptureError('No se pudo verificar el envío. Reintenta la verificación.', 403);
+  if(env.CAPTURE_VERIFICATION)env.CAPTURE_VERIFICATION.verified=true;
 }
 
 export async function handleCapture(request: Request, env: Env, actor: Actor | undefined, helpers: Helpers): Promise<Response | undefined> {

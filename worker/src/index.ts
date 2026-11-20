@@ -27,6 +27,8 @@ export interface Env extends SupabaseEnv, RuntimeEnv {
   RELATIONAL_ACTOR?: SessionProfile;
   DATA_PROVIDER?: string;
   CAPTURE_HASH_SECRET?: string;
+  // Internal per-request cache, never populated from HTTP input.
+  CAPTURE_VERIFICATION?: {verified:boolean};
   TURNSTILE_SECRET_KEY?: string;
   TURNSTILE_SITE_KEY?: string;
   FIREBASE_PROJECT_ID: string;
@@ -1420,12 +1422,23 @@ const worker={async scheduled(_event:ScheduledController,env:Env,ctx:ExecutionCo
     if(actor?.managedCompany&&path==='/api/capture/links'&&request.method==='POST'){const input=await request.clone().json<{companyCampaignId?:string}>();if(!actor.companyCampaigns?.includes(input.companyCampaignId||''))throw new SupabaseError(403,'COMPANY_CAMPAIGN_REQUIRED');}
     if((path.startsWith('/api/org')||path==='/api/capture/forms')&&env.ORG_ENABLED==='true'&&actor)return response(await organizationRequest(request,env,actor),200,cors(request,env));
     const runtimeEnv={...env,ORG_COMPANY:actor?.companyId};
-    store=await new RelationalRuntime(runtimeEnv,actor?.authUserId||null,token).load();
-    scoped={...runtimeEnv,DOCUMENTS:objectStore,RELATIONAL_ACTOR:actor,RELATIONAL_RUNTIME:store};
-    const result=await handleRequest(request,scoped);
-    if(result.ok)await store.commit();
-    else {await cleanup();for(const uid of store.newAuthIds)await relationalIdentity(scoped,'delete',{localId:uid}).catch(()=>{});}
-    return result;
+    const publicSubmission=!!token&&request.method==='POST';
+    const verification={verified:false};
+    for(let attempt=0;attempt<3;attempt++){
+      store=await new RelationalRuntime(runtimeEnv,actor?.authUserId||null,token).load();
+      scoped={...runtimeEnv,DOCUMENTS:objectStore,RELATIONAL_ACTOR:actor,RELATIONAL_RUNTIME:store,CAPTURE_VERIFICATION:verification};
+      const result=await handleRequest(publicSubmission?request.clone():request,scoped);
+      if(result.ok){
+        try{await store.commit();}catch(error){
+          if(publicSubmission&&attempt<2&&error instanceof SupabaseError&&error.code==='CAPTURE_RETRY'){
+            await cleanup();newObjects.clear();continue;
+          }
+          throw error;
+        }
+      }else {await cleanup();for(const uid of store.newAuthIds)await relationalIdentity(scoped,'delete',{localId:uid}).catch(()=>{});}
+      return result;
+    }
+    throw new SupabaseError(409,'CAPTURE_RETRY');
   }catch(error){
     await cleanup();
     if(store&&scoped&&!store.committed)for(const uid of store.newAuthIds)await relationalIdentity(scoped,'delete',{localId:uid}).catch(()=>{});

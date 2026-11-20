@@ -14,3 +14,16 @@ it('un error no bloquea reintentos ni borra datos y se ve junto al botón',async
  expect(m.add).toHaveBeenCalledTimes(2);expect(close).toHaveBeenCalled();expect(m.open).toHaveBeenCalledWith('new');
  }finally{await act(async()=>root.unmount());host.remove();}
 });
+
+it('ofrece reutilizar un duplicado sin registrar ni trasladar automáticamente',async()=>{
+ (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;m.add.mockClear();
+ m.duplicate.mockReturnValue({isDuplicate:true,reason:'Ya existe un postulante',matchedCandidate:{id:'CAN-12345678',dni:'12345678',fullName:'Existente',companyId:'techcenter',campaignId:'camp',recruiterId:'u'}} as any);
+ const host=document.createElement('div'),root=createRoot(host);document.body.append(host);
+ try{await act(async()=>root.render(<CandidateCreateModal isOpen onClose={()=>{}}/>));
+ const input=host.querySelector<HTMLInputElement>('[placeholder="Ej: 74829103"]')!;
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'12345678');input.dispatchEvent(new Event('input',{bubbles:true}));});
+ expect(host.textContent).toContain('Ya existe un postulante');
+ const button=[...host.querySelectorAll('button')].find(b=>b.textContent==='Vincular a otra convocatoria')!;expect(button).toBeTruthy();
+ await act(async()=>button.click());expect(host.querySelector('[role=dialog]')).toBeTruthy();expect(m.add).not.toHaveBeenCalled();
+ }finally{await act(async()=>root.unmount());host.remove();m.duplicate.mockReturnValue({isDuplicate:false});}
+});

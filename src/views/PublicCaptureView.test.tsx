@@ -20,6 +20,8 @@ it('conserva el error tras renovar captcha y reutiliza requestId al reintentar',
   await act(async()=>root.render(<PublicCaptureView token={'a'.repeat(48)}/>));
   expect(host.querySelector('select')!.value).toBe('campaign');
   for(let i=0;i<4;i++)await act(async()=>Array.from(host.querySelectorAll('button')).find(b=>b.textContent?.includes('Continuar'))!.click());
+  await act(async()=>options['expired-callback']());
+  expect(host.textContent).toContain('La verificación venció');
   await act(async()=>options['error-callback']('110200'));
   expect(host.textContent).toContain('dominio no está autorizado');
   await act(async()=>Array.from(host.querySelectorAll('button')).find(b=>b.textContent==='Reintentar verificación')!.click());

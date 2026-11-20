@@ -12,7 +12,7 @@ const admin='40000000-0000-4000-8000-000000000001';
 const trainer='40000000-0000-4000-8000-000000000002';
 const other='40000000-0000-4000-8000-000000000003';
 let db:any,campaignId:string,personId:string,groupId:string;
-let failNextCaptureCommit=false;
+let failNextCaptureCommit=false;let captureConflicts=0;let verificationCalls=0;
 const objects=new Map<string,Uint8Array>();
 const registrationAnswers={age:'25',contactCenterExperience:'No',workedAtTechCenter:'No',education:'Secundaria completa',reentry:'No',birthDate:'2001-01-01',addressReference:'Lima',contractType:'PLANILLA MICRO',workOrStudy:'No',workday:'Full time',availability:'Turno tarde',commitments:'No',modality:'Presencial',privacyAcknowledged:true};
 const captureConfiguration={minAge:18,maxAge:null,workdays:['Full time','Semi full'],schedules:['Turno mañana','Turno tarde'],modality:'Presencial'};
@@ -48,7 +48,7 @@ describe('Transición relacional PostgreSQL 17',()=>{
    insert into talent.tenant_revisions(company_id) values ('tenant'),('other') on conflict(company_id) do nothing;`);
   authUsers.set(admin,{id:admin,email:'ci.admin@auth.talentcc.invalid'});authUsers.set(trainer,{id:trainer,email:'ci.trainer@auth.talentcc.invalid'});authUsers.set(other,{id:other,email:'ci.other@auth.talentcc.invalid'});
   vi.stubGlobal('fetch',vi.fn(async(input:any,init?:RequestInit)=>{
-   const url=new URL(String(input));if(url.hostname==='challenges.cloudflare.com')return Response.json({success:true,hostname:'example.test',action:'capture'});if(url.hostname!=='sql-test.supabase.co')throw new Error('UNEXPECTED_PROVIDER '+url.hostname);
+   const url=new URL(String(input));if(url.hostname==='challenges.cloudflare.com'){verificationCalls++;return Response.json({success:true,hostname:'example.test',action:'capture'});}if(url.hostname!=='sql-test.supabase.co')throw new Error('UNEXPECTED_PROVIDER '+url.hostname);
    const body=typeof init?.body==='string'?JSON.parse(init.body):{};
    if(url.pathname==='/auth/v1/user'){const uid=new Headers(init?.headers).get('Authorization')?.replace('Bearer ','');const user=authUsers.get(uid||'');return user?Response.json(user):Response.json({},{status:401});}
    if(url.pathname.startsWith('/auth/v1/admin/users')){
@@ -64,7 +64,7 @@ describe('Transición relacional PostgreSQL 17',()=>{
     if(fn==='talent_capture_catalog')result=await db.query('select public.talent_capture_catalog($1) as result',[body.p_hash]);
     else if(fn==='talent_session_profile')result=await db.query('select public.talent_session_profile($1::uuid) as result',[body.p_auth]);
     else if(fn==='talent_runtime_snapshot')result=await db.query('select public.talent_runtime_snapshot($1::uuid,$2) as result',[body.p_actor,body.p_public_hash]);
-    else if(fn==='talent_runtime_commit'){if(failNextCaptureCommit){failNextCaptureCommit=false;throw new Error('SIMULATED_COMMIT_FAILURE');}result=await db.query('select public.talent_runtime_commit($1::uuid,$2,$3,$4,$5::jsonb,$6::text[]) as result',[body.p_actor,body.p_public_hash,body.p_company,body.p_revision,JSON.stringify(body.p_rows),body.p_resets||[]]);}
+    else if(fn==='talent_runtime_commit'){if(body.p_public_hash&&captureConflicts>0){captureConflicts--;throw Object.assign(new Error('SIMULATED_CONFLICT'),{code:'PT409'});}if(failNextCaptureCommit){failNextCaptureCommit=false;throw new Error('SIMULATED_COMMIT_FAILURE');}result=await db.query('select public.talent_runtime_commit($1::uuid,$2,$3,$4,$5::jsonb,$6::text[]) as result',[body.p_actor,body.p_public_hash,body.p_company,body.p_revision,JSON.stringify(body.p_rows),body.p_resets||[]]);}
     else if(fn==='talent_candidate_create_commit'||fn?.startsWith('talent_voicebot_')||fn?.startsWith('talent_training_')||fn?.startsWith('talent_offer_')||fn?.startsWith('talent_org_')||fn?.startsWith('talent_survey_')||fn?.startsWith('talent_unlock_')){const keys=Object.keys(body);result=await db.query('select public.'+fn+'('+keys.map((k,i)=>k+'=> $'+(i+1)).join(',')+') as result',keys.map(k=>['p_rows','p_grants'].includes(k)?JSON.stringify(body[k]):Array.isArray(body[k])?'{'+body[k].join(',')+'}':body[k]&&typeof body[k]==='object'?JSON.stringify(body[k]):body[k]));}
     else throw new Error('UNKNOWN_RPC '+fn);
     await db.exec('commit');return fn==='talent_runtime_commit'?new Response(null,{status:204}):Response.json(result.rows[0].result??null);
@@ -391,7 +391,9 @@ describe('Transición relacional PostgreSQL 17',()=>{
    const answers=Object.fromEntries(techCenterSections.flatMap(s=>s.fields).filter(f=>f.options).map(f=>[f.key,optionValue(f.options![0])]));
    const applicant={...answers,age:'25',reentry:'No',birthDate:'2001-01-01',addressReference:'Lima',contractType:'PLANILLA MICRO',workOrStudy:'No',availability:'Turno tarde',preferredCampaign:'techcenter:bitel-portabilidad',documentNumber:'99900999',fullName:'CI Techcenter',district:'Lima, Comas',phone:'912345679',email:'tech@example.test',experienceDetails:'Un año en ventas',disability:'Sí',disabilityDetails:'Acceso sin escaleras',sensitiveConsent:true,privacyAcknowledged:true,requestId:crypto.randomUUID(),turnstileToken:'test-only-token'};
    expect((await pub({...applicant,preferredCampaign:'talent-up:bitel-portabilidad',companyId:'talent-up',companyName:'Otra empresa'})).status).toBe(400);
+   captureConflicts=2;const verificationBefore=verificationCalls;
    expect((await pub(applicant)).status).toBe(201);
+   expect(captureConflicts).toBe(0);expect(verificationCalls-verificationBefore).toBe(1);
    expect((await pub(applicant)).status).toBe(201);
    const events=(await call('/api/capture/management','GET',undefined,admin,'techcenter')).data.events;
    const event=events.find((e:any)=>e.applicant.documentNumber==='99900999');
