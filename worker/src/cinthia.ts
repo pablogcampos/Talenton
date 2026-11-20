@@ -1,3 +1,4 @@
+import {handleFreeCinthia} from './cinthiaFree';
 import {cinthiaRpc,hashSessionKey,liveAvailable,liveModel,type CinthiaLiveEnv} from './cinthiaLive';
 import {relationalSession} from './supabaseSession';
 import {SupabaseError} from './supabase';
@@ -9,6 +10,7 @@ export function cinthiaPreview(request:Request,env:CinthiaEnv){
  return env.CINTHIA_DEV_PREVIEW==='true'&&['localhost','127.0.0.1','[::1]'].includes(new URL(request.url).hostname);
 }
 export async function handleCinthia(request:Request,env:CinthiaEnv){
+ if(new URL(request.url).pathname==='/api/cinthia/free'||new URL(request.url).pathname.startsWith('/api/public/cinthia/free/'))return handleFreeCinthia(request,env);
  const url=new URL(request.url),preview=cinthiaPreview(request,env),available=liveAvailable(env,preview);
  const rpc=(name:string,args:Record<string,unknown>)=>cinthiaRpc(env,name,args);
  const token=url.pathname.match(/^\/api\/public\/cinthia\/([a-f0-9]{64})(\/(?:start|receipt))?$/);

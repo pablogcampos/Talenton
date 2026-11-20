@@ -9,6 +9,7 @@ import { SelectionRqAlert } from './components/selection/SelectionRqAlert';
 
 import { VoicebotNotifications } from './components/selection/VoicebotNotifications';
 const CinthiaView = lazy(() => import('./views/CinthiaView').then(m => ({default:m.CinthiaView})));
+const PublicFreeCinthiaView = lazy(() => import('./views/PublicFreeCinthiaView').then(m => ({default:m.PublicFreeCinthiaView})));
 const PublicCinthiaView = lazy(() => import('./views/PublicCinthiaView').then(m => ({default:m.PublicCinthiaView})));
 const VoicebotView = lazy(() => import('./views/VoicebotView').then(m => ({ default: m.VoicebotView })));
 const LaborOffersView = lazy(() => import('./views/LaborOffersView').then(m => ({ default: m.LaborOffersView })));
@@ -231,6 +232,8 @@ const AppContent: React.FC = () => {
 };
 
 export default function App() {
+ const freeRoute=window.location.pathname.match(/^\/cinthia\/libre\/([a-f0-9]{64})$/);
+ if(freeRoute)return <Suspense fallback={<p>Cargando…</p>}><PublicFreeCinthiaView token={freeRoute[1]}/></Suspense>;
   const cinthiaRoute=window.location.pathname.match(/^\/cinthia\/([a-f0-9]{64})$/);
   if(cinthiaRoute)return <Suspense fallback={<p className="p-6">Cargando CinthIA…</p>}><PublicCinthiaView key={cinthiaRoute[1]} token={cinthiaRoute[1]}/></Suspense>;
   const groupOfferRoute = window.location.pathname.match(/^\/propuesta\/capacitacion\/([a-f0-9]{64})$/);
