@@ -14,7 +14,7 @@ export async function handleFreeCinthia(request:Request,env:CinthiaLiveEnv){
   const d=await body(request,2000);if(typeof d.name!=='string'||d.name.trim().length<3||d.name.length>150||typeof d.phone!=='string'||!/^\+?[0-9 ()-]{9,24}$/.test(d.phone)||d.email&&(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)||d.email.length>254))throw new SupabaseError(400,'CINTHIA_INVALID');
   let phone=d.phone.replace(/\D/g,'');if(phone.length===9)phone='51'+phone;if(!/^[0-9]{9,15}$/.test(phone))throw new SupabaseError(400,'CINTHIA_INVALID');
   const ip=request.headers.get('CF-Connecting-IP')||'unknown';const rate=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(match[1]+':'+ip))),b=>b.toString(16).padStart(2,'0')).join('');
-  return cinthiaRpc(env,'talent_cinthia_free_public',{p_token:match[1],p_token_new:randomToken(),p_rate:rate,p_data:{name:d.name.trim(),phone,email:d.email||'',consent:d.consent===true,consentVersion:d.consentVersion,requestHash:await hashSessionKey(d.key)}});
+  return cinthiaRpc(env,'talent_cinthia_free_public',{p_token:match[1],p_token_new:randomToken(),p_rate:rate,p_data:{name:d.name.trim(),dni:typeof d.dni==='string'?d.dni.trim():'',phone,email:d.email||'',consent:d.consent===true,consentVersion:d.consentVersion,requestHash:await hashSessionKey(d.key)}});
  }
  const actor=await relationalSession(request,{...env,ORG_ENABLED:'false'});if(actor.role!=='ADMIN')throw new SupabaseError(403,'FORBIDDEN');
  if(url.pathname!=='/api/cinthia/free')throw new SupabaseError(404,'CINTHIA_NOT_FOUND');

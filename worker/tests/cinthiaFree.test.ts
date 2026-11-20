@@ -24,3 +24,13 @@ it('requires consent, blocks expired evaluations and verifies link targets',asyn
  await db.query("update public.cinthia_free_evaluations set config=jsonb_set(config,'{expiresAt}',to_jsonb('2099-01-01T00:00:00Z'::text)) where id=$1",[evaluation.id]);
  await expect(rpc('talent_cinthia_free_public',{p_token:evaluation.token,p_data:{consent:false}})).rejects.toThrow('CINTHIA_CONSENT_REQUIRED');
 });
+it('DNI: one attempt even with a different phone, retry resumes only with the original secret',async()=>{
+ const e=await manage('SAVE',undefined,{token:'8'.repeat(64),config:{...config,identityMode:'DNI',maxAttempts:1}});await manage('STATE',e.id,{status:'ACTIVE',revision:1});
+ const pub=await rpc('talent_cinthia_free_public',{p_token:e.token});expect(pub.identityMode).toBe('DNI');
+ const reg=(dni:string,phone:string,key:string)=>rpc('talent_cinthia_free_public',{p_token:e.token,p_token_new:'9'.repeat(64),p_rate:'7'.repeat(64),p_data:{name:'DNI Test',dni,phone,consent:true,consentVersion:'cinthia-free-v1',requestHash:key}});
+ await expect(reg('','51900111222','6'.repeat(64))).rejects.toThrow('CINTHIA_DNI_REQUIRED');
+ const first=await reg('01234567','51900111222','6'.repeat(64));expect(await reg('01234567','51900111222','6'.repeat(64))).toEqual(first);
+ await expect(reg('01234567','51900999888','5'.repeat(64))).rejects.toThrow('CINTHIA_DNI_ATTEMPT_USED');
+ await expect(reg('87654321','51900111222','6'.repeat(64))).rejects.toThrow('CINTHIA_FREE_LIMIT');
+ expect((await db.query<any>('select count(*)::int n from public.cinthia_free_participants where evaluation_id=$1',[e.id])).rows[0].n).toBe(1);
+});

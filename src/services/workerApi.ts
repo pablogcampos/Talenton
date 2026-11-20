@@ -93,6 +93,8 @@ const WORKER_ERROR_MESSAGES: Record<string, string> = {
   RELATED_RECORD_INVALID: 'Una referencia (usuario, grupo o convocatoria) ya no es válida. Actualiza la vista y revisa la asignación.',
   DATA_VALIDATION_FAILED: 'Los datos incumplen una validación. Revisa importes, fechas, estados y campos obligatorios.',
   INVALID_DATA_FORMAT: 'Revisa el formato de las fechas y los valores numéricos.',
+  CINTHIA_DNI_REQUIRED: 'Ingresa un DNI válido de 8 dígitos.',
+  CINTHIA_DNI_ATTEMPT_USED: 'Este DNI ya utilizó su intento en esta evaluación. Si se interrumpió, retoma desde la pestaña original.',
   CINTHIA_FREE_LIMIT: 'Se alcanzó el límite de participantes o intentos. Contacta al equipo que compartió la evaluación.',
   RELATIONAL_WRITE_FAILED: 'No se pudo confirmar el guardado en Supabase. Conserva los cambios y comunica este código al administrador: RELATIONAL_WRITE_FAILED.',
   ACTIVE_APPLICATION_EXISTS: 'El postulante ya tiene una convocatoria activa. Debes cerrar esa participación antes de vincular otra.',
