@@ -1,7 +1,8 @@
+import {CinthiaAudioRecorder} from './cinthiaAudio';
 import {freeVoiceInstruction,type FreeConfig} from '../../shared/cinthiaFree';
 import {QuestionFlow,questionTool,meaningfulAnswer} from './cinthiaQuestionFlow';
 import {SupabaseError,supabaseServerHeaders,type SupabaseEnv} from './supabase';
-export type CinthiaLiveEnv=SupabaseEnv & {GEMINI_API_KEY?:string;CINTHIA_LIVE_MODEL?:string;CINTHIA_LIVE_ENABLED?:string;CINTHIA_LIVE_VALIDATED?:string;CINTHIA_DEV_PREVIEW?:string};
+export type CinthiaLiveEnv=SupabaseEnv & {DOCUMENTS?:R2Bucket;GEMINI_API_KEY?:string;CINTHIA_LIVE_MODEL?:string;CINTHIA_LIVE_ENABLED?:string;CINTHIA_LIVE_VALIDATED?:string;CINTHIA_DEV_PREVIEW?:string};
 export const liveModel=(env:CinthiaLiveEnv)=>env.CINTHIA_LIVE_MODEL||'gemini-3.8-live';
 export const liveAvailable=(env:CinthiaLiveEnv,preview:boolean)=>!!env.GEMINI_API_KEY&&env.CINTHIA_LIVE_ENABLED==='true'&&(preview||env.CINTHIA_LIVE_VALIDATED==='true');
 export class VoiceFault extends Error {
@@ -49,6 +50,7 @@ export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean
  if(request.headers.get('Upgrade')?.toLowerCase()!=='websocket')throw new SupabaseError(400,'CINTHIA_INVALID');
  const pair=new WebSocketPair(),client=pair[0],peer=pair[1];peer.accept();
  let upstream:WebSocket|undefined,token='',clientHash='',connectionId='',session:any,transcript=new LiveTranscript(),resumeHandle:string|undefined,flow:QuestionFlow|undefined;
+ let recording:CinthiaAudioRecorder|undefined;
  let ready=false,ending=false,closed=false,authenticated=false,turnComplete=false,dirty=false,bytes=0,minute=Date.now(),commands=0,speechVersion=0,lastSpeechActivity=0,farewellAudio=false,freeDone=false;
  let idleTimer:ReturnType<typeof setTimeout>|undefined;
  const activity=()=>{clearTimeout(idleTimer);if(ready&&!closed&&!ending)idleTimer=setTimeout(()=>{send({type:'paused',reason:'SILENCE_TIMEOUT'});void stop('SILENCE_TIMEOUT');},30000);};
@@ -57,13 +59,14 @@ export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean
  const authTimer=setTimeout(()=>void stop('AUTH_TIMEOUT'),10000);
  const send=(d:unknown)=>{if(peer.readyState===1){try{peer.send(JSON.stringify(d));}catch{}}};
  const rpc=async(action:string,data={})=>{try{return await cinthiaRpc(env,'talent_cinthia_session',{p_token:token,p_action:action,p_test:preview,p_data:{clientHash,connectionId,...data}});}catch(e){if(e instanceof SupabaseError||e instanceof VoiceFault)throw e;throw new VoiceFault('Supabase',e instanceof Error?e.name:'CAUSE_NOT_REPORTED');}};
- const save=async()=>{await rpc('SAVE',{transcript:transcript.segments,resumeHandle,...(flow?{flow:flow.progress}:{})});dirty=false;};
+ const save=async()=>{await recording?.flush();await rpc('SAVE',{transcript:transcript.segments,resumeHandle,...(flow?{flow:flow.progress}:{})});dirty=false;};
  const enqueue=(run:()=>Promise<void>)=>{queue=queue.then(()=>closed?undefined:run()).catch(e=>stop(voiceDiagnostic(e).code,voiceDiagnostic(e,e instanceof SupabaseError?'Supabase':'Servidor')));};
  async function stop(code:string,details:Record<string,unknown>={source:'Servidor',code}){
   if(closed)return;closed=true;clearTimeout(idleTimer);clearTimeout(authTimer);clearTimeout(setupTimer);clearTimeout(timer);clearInterval(heartbeat);clearInterval(saveTimer);
   const diagnostic={...details,reference:connectionId||crypto.randomUUID(),at:new Date().toISOString()};
   if(code!=='COMPLETED'){console.error(JSON.stringify({event:'cinthia_error',...diagnostic}));send({type:'error',message:code,diagnostic});}
   try{upstream?.close(1000,'Session ended');}catch{}
+  try{if(!ending)await recording?.flush();}catch(e){send({type:'error',message:'CINTHIA_AUDIO_SAVE_FAILED'});console.error('CINTHIA_AUDIO_SAVE_FAILED');}
   if(session&&!ending){try{await save();}catch{}try{await rpc('INTERRUPT',{code});}catch{}}
   try{peer.close(1000,code.slice(0,80));}catch{}
  }
@@ -85,10 +88,10 @@ export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean
     if(m.sessionResumptionUpdate?.resumable&&m.sessionResumptionUpdate.newHandle){resumeHandle=m.sessionResumptionUpdate.newHandle;dirty=true;}
     const sc=m.serverContent;let transcriptChanged=false;
     if(sc){
-     if(sc.interrupted){transcriptChanged=true;transcript.turn(true);send({type:'interrupted'});dirty=true;}
+     if(sc.interrupted){recording?.interrupt();transcriptChanged=true;transcript.turn(true);send({type:'interrupted'});dirty=true;}
      if(sc.inputTranscription){activity();transcriptChanged=true;transcript.append('candidate',sc.inputTranscription.text||'',!!sc.inputTranscription.finished);dirty=true;turnComplete=false;}
      if(sc.outputTranscription){transcriptChanged=true;transcript.append('cinthia',sc.outputTranscription.text||'',!!sc.outputTranscription.finished);dirty=true;turnComplete=false;}
-     for(const p of sc.modelTurn?.parts||[])if(p.inlineData?.data&&p.inlineData.mimeType?.startsWith('audio/pcm')){if(flow?.done||freeDone)farewellAudio=true;activity();send({type:'audio',data:p.inlineData.data,mimeType:p.inlineData.mimeType});turnComplete=false;}
+     for(const p of sc.modelTurn?.parts||[])if(p.inlineData?.data&&p.inlineData.mimeType?.startsWith('audio/pcm')){recording?.add(p.inlineData.data,Number(/rate=(\d+)/.exec(p.inlineData.mimeType)?.[1]||24000),1);if(flow?.done||freeDone)farewellAudio=true;activity();send({type:'audio',data:p.inlineData.data,mimeType:p.inlineData.mimeType});turnComplete=false;}
      if(sc.turnComplete){turnComplete=!sc.interrupted&&sc.interactionStatus!=='IN_PROGRESS';transcript.turn(!!sc.interrupted);await save();if(turnComplete)send({type:'turnComplete',autoFinish:(!!flow?.done||freeDone)&&farewellAudio});}
      if(transcriptChanged||sc.turnComplete)send({type:'transcript',segments:transcript.segments});
     }
@@ -121,8 +124,12 @@ export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean
   let m:any;try{m=JSON.parse(e.data);}catch{void stop('INVALID_MESSAGE');return;}
   if(!authenticated){
    authenticated=true;clearTimeout(authTimer);
-   enqueue(async()=>{if(m.type!=='auth'||!/^([a-f0-9]{64})$/.test(m.token||''))throw Error('INVALID_AUTH');token=m.token;clientHash=await hashSessionKey(m.key);connectionId=crypto.randomUUID();send({type:'diagnosticReference',reference:connectionId});console.info(JSON.stringify({event:'cinthia_connection',reference:connectionId,ray:request.headers.get('cf-ray'),at:new Date().toISOString()}));session=await claimSession(()=>rpc('CLAIM'),()=>closed,()=>send({type:'recovering'}));transcript=new LiveTranscript(session.transcript);flow=!session.evaluation_config?.free&&Array.isArray(session.questions)?new QuestionFlow(session.questions,session.flow,session.evaluation_config?.activities?.map((a:any)=>a.essential)||[],Math.min(session.evaluation_config?.followups||0,session.runtime_config?.maxFollowups??2)):undefined;speechVersion=flow?.progress.speechConsumed||0;resumeHandle=session.resume_handle||undefined;
-    timer=setTimeout(()=>enqueue(async()=>{if(session.evaluation_config?.free){const receipt=await rpc('FREE_FINISH',{transcript:transcript.segments});ending=true;send({type:'saved',...receipt});await stop('COMPLETED');}else await stop('SESSION_TIME_LIMIT');}),Math.max(0,Date.parse(session.deadline)-Date.now()- (session.evaluation_config?.free?1000:0)));
+   enqueue(async()=>{if(m.type!=='auth'||!/^([a-f0-9]{64})$/.test(m.token||''))throw Error('INVALID_AUTH');token=m.token;clientHash=await hashSessionKey(m.key);connectionId=crypto.randomUUID();send({type:'diagnosticReference',reference:connectionId});console.info(JSON.stringify({event:'cinthia_connection',reference:connectionId,ray:request.headers.get('cf-ray'),at:new Date().toISOString()}));session=await claimSession(()=>rpc('CLAIM'),()=>closed,()=>send({type:'recovering'}));if(session.evaluation_config?.recordAudio){
+     if(!env.DOCUMENTS)throw Error('CINTHIA_AUDIO_UNAVAILABLE');
+     const info=await cinthiaRpc(env,'talent_cinthia_audio',{p_action:'CHECK',p_token:token,p_hash:clientHash});
+     recording=new CinthiaAudioRecorder(async(wav,startedAt,durationMs)=>{const id=crypto.randomUUID(),objectKey='cinthia/audio/'+info.invitationId+'/'+id+'.wav';await env.DOCUMENTS!.put(objectKey,wav,{httpMetadata:{contentType:'audio/wav'}});try{await cinthiaRpc(env,'talent_cinthia_audio',{p_action:'APPEND',p_token:token,p_hash:clientHash,p_id:id,p_data:{connectionId,objectKey,startedAt,durationMs}});}catch(e){await env.DOCUMENTS!.delete(objectKey);throw e;}});
+    }transcript=new LiveTranscript(session.transcript);flow=!session.evaluation_config?.free&&Array.isArray(session.questions)?new QuestionFlow(session.questions,session.flow,session.evaluation_config?.activities?.map((a:any)=>a.essential)||[],Math.min(session.evaluation_config?.followups||0,session.runtime_config?.maxFollowups??2)):undefined;speechVersion=flow?.progress.speechConsumed||0;resumeHandle=session.resume_handle||undefined;
+    timer=setTimeout(()=>enqueue(async()=>{if(session.evaluation_config?.free){await recording?.flush();const receipt=await rpc('FREE_FINISH',{transcript:transcript.segments});ending=true;send({type:'saved',...receipt});await stop('COMPLETED');}else await stop('SESSION_TIME_LIMIT');}),Math.max(0,Date.parse(session.deadline)-Date.now()- (session.evaluation_config?.free?1000:0)));
     heartbeat=setInterval(()=>enqueue(async()=>{await save();}),15000);saveTimer=setInterval(()=>{if(dirty)enqueue(save);},5000);await connect();});return;
   }
   if(!ready||ending)return;
@@ -130,6 +137,7 @@ export function cinthiaSocket(request:Request,env:CinthiaLiveEnv,preview:boolean
   if(m.type==='audio'){
    if(typeof m.data!=='string'||m.data.length>44000||!/^[A-Za-z0-9+/]*={0,2}$/.test(m.data)){void stop('INVALID_AUDIO');return;}
    if(Date.now()-minute>60000){bytes=0;commands=0;minute=Date.now();}bytes+=m.data.length;if(bytes>3000000){void stop('AUDIO_RATE_LIMIT');return;}
+   recording?.add(m.data,16000,0);
    upstream?.send(JSON.stringify({realtimeInput:{audio:{data:m.data,mimeType:'audio/pcm;rate=16000'}}}));
   }else{
    if(++commands>120){void stop('COMMAND_RATE_LIMIT');return;}

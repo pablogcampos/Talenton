@@ -1,6 +1,6 @@
 import {newEvaluation,evaluationIssues,validEvaluationShape,type EvaluationConfig} from './cinthiaEvaluation';
 export const freeTypes=['Role play comercial','Atención al cliente','Manejo de objeciones','Entrevista por competencias','Personalizada'] as const;
-export type FreeConfig=EvaluationConfig&{free:true;identityMode?:'DNI';kind:string;experience:string;difficulty:string;scenario:string;persona:string;maxAttempts:number;participantLimit:number;expiresAt:string};
+export type FreeConfig=EvaluationConfig&{free:true;recordAudio?:boolean;identityMode?:'DNI';kind:string;experience:string;difficulty:string;scenario:string;persona:string;maxAttempts:number;participantLimit:number;expiresAt:string};
 export const newFreeEvaluation=():FreeConfig=>({...newEvaluation(),free:true,kind:freeTypes[0],experience:'Mixto',difficulty:'Básico',scenario:'',persona:'Cliente indeciso, respetuoso y realista.',maxAttempts:1,participantLimit:100,expiresAt:'',positions:['Participante externo'],companyId:'free',minutes:3,followups:2});
 export function freeIssues(c:FreeConfig){
  if(!validEvaluationShape(c))return ['Configuración inválida.'];

@@ -1,0 +1,8 @@
+import {useEffect,useState} from 'react';
+import {workerApi,getWorkerErrorMessage} from '../../services/workerApi';
+export function CinthiaRecording({invitationId}:{invitationId:string}){
+ const [parts,setParts]=useState<{id:string;started_at:string;duration_ms:number}[]>([]),[audio,setAudio]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ useEffect(()=>{let live=true;setParts([]);setAudio('');setError('');void workerApi<typeof parts>('/api/cinthia/audio?invitation='+encodeURIComponent(invitationId)).then(p=>{if(live)setParts(p);}).catch(e=>{if(live)setError(getWorkerErrorMessage(e));});return()=>{live=false;};},[invitationId]);
+ useEffect(()=>()=>{if(audio)URL.revokeObjectURL(audio);},[audio]);
+ return <section className="space-y-2 rounded-xl border p-4"><h3 className="font-semibold">Audio de la evaluación</h3><p className="text-sm">Grabación del audio recibido y enviado por el servidor, por tramos. Puede diferir de lo reproducido en el dispositivo. Las interrupciones pueden dejar tramos incompletos.</p>{!parts.length&&<p>No hay audio guardado disponible.</p>}<div className="flex flex-wrap gap-2">{parts.map((p,i)=><button type="button" key={p.id} disabled={busy} className="rounded-lg border px-3 py-2 text-sm" onClick={async()=>{setBusy(true);setError('');try{const r=await workerApi<{audio:string;mime:string}>('/api/cinthia/audio?part='+p.id);setAudio(URL.createObjectURL(new Blob([Uint8Array.from(atob(r.audio),c=>c.charCodeAt(0))],{type:r.mime})));}catch(e){setError(getWorkerErrorMessage(e));}finally{setBusy(false);}}}>Tramo {i+1} · {Math.round(p.duration_ms/1000)} s</button>)}</div>{audio&&<audio controls src={audio} className="w-full"/>}{error&&<p role="alert" className="text-red-700">{error}</p>}</section>;
+}

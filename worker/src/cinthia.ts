@@ -24,13 +24,22 @@ export async function handleCinthia(request:Request,env:CinthiaEnv){
    const text=await request.text();if(text.length>1000)throw new SupabaseError(413,'CINTHIA_INVALID');
    let d:any;try{d=JSON.parse(text);}catch{throw new SupabaseError(400,'CINTHIA_INVALID');}
    const clientHash=await hashSessionKey(d?.key);
+   const audio=await rpc('talent_cinthia_audio',{p_action:'INFO',p_token:token[1]});
+   if(audio.recordAudio)await rpc('talent_cinthia_audio',{p_action:'CONSENT',p_token:token[1],p_hash:clientHash,p_data:{accepted:d.audioConsent===true,version:'cinthia-audio-v1'}});
    const session=await rpc('talent_cinthia_session',{p_token:token[1],p_action:'BEGIN',p_test:preview,p_data:{clientHash,consent:d.consent===true,consentVersion:d.consentVersion,model:liveModel(env)}});
    return {sessionId:session.id,deadline:session.deadline};
   }
-  return {...data,...await rpc('talent_cinthia_public_metadata',{p_token:token[1]}),serviceAvailable:available,consentVersion:'cinthia-voice-v1'};
+  return {...data,...await rpc('talent_cinthia_audio',{p_action:'INFO',p_token:token[1]}),...await rpc('talent_cinthia_public_metadata',{p_token:token[1]}),serviceAvailable:available,consentVersion:'cinthia-voice-v1'};
  }
  if(url.pathname.startsWith('/api/public/cinthia/'))throw new SupabaseError(404,'CINTHIA_NOT_FOUND');
  const actor=await relationalSession(request,{...env,ORG_ENABLED:'false'});
+ if(url.pathname==='/api/cinthia/audio'){
+  if(request.method!=='GET')throw new SupabaseError(405,'METHOD_NOT_ALLOWED');
+  const part=url.searchParams.get('part');
+  if(!part)return rpc('talent_cinthia_audio',{p_action:'LIST',p_actor:actor.authUserId,p_id:url.searchParams.get('invitation')});
+  const info=await rpc('talent_cinthia_audio',{p_action:'READ',p_actor:actor.authUserId,p_id:part});const object=await env.DOCUMENTS?.get(info.objectKey);if(!object)throw new SupabaseError(404,'CINTHIA_NOT_FOUND');
+  const bytes=new Uint8Array(await object.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return {audio:btoa(binary),mime:'audio/wav'};
+ }
  if(url.pathname==='/api/cinthia/tests'&&request.method==='GET')return rpc('talent_cinthia_test_history',{p_actor:actor.authUserId,p_evaluation:url.searchParams.get('evaluation')});
  if(url.pathname==='/api/cinthia/runtime'){
   if(request.method==='GET')return {...await rpc('talent_cinthia_runtime',{p_actor:actor.authUserId}),liveModel:liveModel(env)};
