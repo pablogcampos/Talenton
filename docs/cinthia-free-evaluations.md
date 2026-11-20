@@ -29,6 +29,7 @@ No se almacenan grabaciones de audio, sólo transcripciones e informes, igual qu
 - React: conversación libre oculta preguntas/transcripción y muestra controles de voz; editor admite borrador.
 - Chrome móvil emulado 390×844: bienvenida y formulario sin desbordamiento horizontal.
 - Gemini real: voz sintética de prueba enviada como PCM 16kHz; dos turnos, audio de respuesta y transcripción recibidos. Respondió en personaje a las necesidades del participante. Evaluador existente generó informe con evidencia literal de esa conversación. No se usaron datos reales de participantes en esa prueba.
-- La prueba real del proveedor y la prueba SQL de sesión están separadas; no sustituye una prueba de voz humana en un teléfono físico.
+- Prueba integral en producción con evaluación y participante sintéticos: enlace público, registro, sesión WebSocket real, voz PCM, transcripción, finalización COMPLETED e informe COMPLETE con evidencia. Los registros temporales fueron eliminados al terminar. No sustituye una prueba de voz humana en un teléfono físico.
+- Publicado: migración 202611200001, Worker y Railway. 61 pruebas automatizadas aprobadas.
 
 Migración: `node --env-file=.env.local --env-file=.env.postgres.local scripts/apply-cinthia-free.mjs --execute`. Después desplegar Worker y frontend. No modificar claves/modelos.
