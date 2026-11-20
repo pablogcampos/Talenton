@@ -46,4 +46,12 @@ it('audio requires explicit consent and private admin access, leaves older evalu
  await expect(audio('CHECK',{p_token:r.token,p_hash:'5'.repeat(64)})).rejects.toThrow('CINTHIA_CONSENT_REQUIRED');
  await expect(audio('LIST',{p_actor:other,p_id:consent.invitationId})).rejects.toMatchObject({code:'42501'});
  expect(await audio('LIST',{p_actor:admin,p_id:consent.invitationId})).toEqual([]);
+ const conn='77000000-0000-4000-8000-000000000077',part='77000000-0000-4000-8000-000000000078';
+ await rpc('talent_cinthia_session',{p_token:r.token,p_action:'BEGIN',p_data:{clientHash:'4'.repeat(64),consent:true,consentVersion:'cinthia-voice-v1',model:'existing-model'}});
+ await rpc('talent_cinthia_session',{p_token:r.token,p_action:'CLAIM',p_data:{clientHash:'4'.repeat(64),connectionId:conn}});
+ const data={connectionId:conn,objectKey:'cinthia/audio/'+consent.invitationId+'/'+part+'.wav',startedAt:new Date().toISOString(),durationMs:1000};
+ await audio('APPEND',{p_token:r.token,p_hash:'4'.repeat(64),p_id:part,p_data:data});
+ expect((await audio('LIST',{p_actor:admin,p_id:consent.invitationId})).length).toBe(1);
+ expect((await audio('READ',{p_actor:admin,p_id:part})).objectKey).toBe(data.objectKey);
+ await expect(audio('READ',{p_actor:other,p_id:part})).rejects.toMatchObject({code:'42501'});
 });
