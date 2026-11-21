@@ -61,10 +61,11 @@ export async function handleOffers(request:Request,env:Env){
   }
   if(d.workday!==undefined){
    if(!['FULL_TIME','SEMI_FULL','PART_TIME'].includes(d.workday))throw new SupabaseError(400,'OFFER_INVALID_WORKDAY');
-   return offerRpc(env,'talent_offer_create_workday',{...args,p_campaign:d.campaignId,p_title:d.title,p_content:d.content,p_workday:d.workday});
+   return offerRpc(env,'talent_offer_draft',{...args,p_campaign:d.campaignId,p_title:d.title,p_content:d.content,p_workday:d.workday,p_id:d.id||null,p_revision:d.revision??null});
   }
   return offerRpc(env,'talent_offer_create',{...args,p_campaign:d.campaignId,p_title:d.title,p_content:d.content});
  }
+ if(path==='/api/offers/publish'&&request.method==='POST'){const d=await input(request);return offerRpc(env,'talent_offer_publish',{...args,p_id:d.id,p_revision:d.revision});}
  if(path==='/api/offers/workday-plan'&&request.method==='GET')return offerRpc(env,'talent_offer_workday_plan',{...args,p_group:new URL(request.url).searchParams.get('group')});
  if(path==='/api/offers/assign-workdays'&&request.method==='POST'){
   const d=await input(request);if(typeof d.groupId!=='string'||typeof d.hash!=='string')throw new SupabaseError(400,'OFFER_INVALID');
