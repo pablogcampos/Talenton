@@ -354,6 +354,8 @@ export interface RejectionRecord {
 }
 
 export interface DailyAttendance {
+  recordedAt?: string;
+  source?: string;
   date: string;
   dayNumber: number;
   status: AttendanceStatus;

@@ -1,6 +1,7 @@
+vi.mock('../../services/workerApi',()=>({workerApi:vi.fn(),getWorkerErrorMessage:(e:Error)=>e.message}));
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {describe,it,expect} from 'vitest';
+import {describe,it,expect,vi} from 'vitest';
 import {AttendancePanel,AttendanceTable} from './AttendancePanel';
 import {limaDate,limaTime,liveAttendanceState,pastAttendanceDates} from './attendanceTime';
 import type {CandidateRecord} from '../../types';
@@ -8,6 +9,10 @@ import type {AttendanceWindowInfo} from '../../context/TalentContext';
 
 const info:AttendanceWindowInfo={serverNow:'2026-11-03T14:00:00Z',startAt:'2026-11-03T14:00:00Z',closesAt:'2026-11-03T15:00:00Z',state:'OPEN',unlock:null};
 describe('historial y hora de asistencia',()=>{
+ it('muestra hora, origen e historial en las marcas recibidas por enlace',()=>{
+  const html=renderToStaticMarkup(<AttendanceTable participants={[{id:'one',fullName:'Persona'}] as CandidateRecord[]} date="2026-11-26" openCandidate360={()=>{}} roster={[{personId:'one',name:'Persona',status:'TARDANZA',markedAt:'2026-11-26T14:15:00Z',source:'Formador · manual',notes:'Corrección justificada',history:[{at:'2026-11-26T14:15:00Z',previous:'PRESENTE',status:'TARDANZA',reason:'Corrección justificada'}]}]}/>);
+  expect(html).toContain('09:15:00');expect(html).toContain('Formador · manual');expect(html).toContain('Correcciones (1)');expect(html).toContain('Corrección justificada');
+ });
  it('usa Lima incluso cuando el día UTC ya cambió',()=>{
   expect(limaDate(new Date('2026-11-04T02:30:00Z'))).toBe('2026-11-03');
   expect(limaTime('2026-11-04T02:30:00Z')).toBe('21:30:00');

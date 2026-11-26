@@ -1,3 +1,4 @@
+import {SelfAttendanceLink,type AttendanceRosterRow} from './SelfAttendanceLink';
 import {InjectionBadge} from './InjectionBadge';
 import React, {useEffect, useState} from 'react';
 import {History, Lock, TimerReset} from 'lucide-react';
@@ -7,12 +8,17 @@ import {attendanceDateLabel, limaDate, limaTime, liveAttendanceState, pastAttend
 
 const labels: Record<string,string> = {PRESENTE:'Presente',TARDANZA:'Tardanza',FALTA:'Ausente',NSP:'Ausente',JUSTIFICADO:'Justificado',FALTA_JUSTIFICADA:'Justificado',FALTA_INJUSTIFICADA:'Ausente'};
 type Props = {
+ groupId?:string;companyId?:string;
  participants:CandidateRecord[]; date:string; setDate:(date:string)=>void; onToday:()=>void;
  windowInfo:AttendanceWindowInfo|null; loading:boolean; saving:boolean;
- onMark:(id:string,status:AttendanceStatus)=>void; onUnlock:()=>void;
+ onMark:(id:string,status:AttendanceStatus,notes?:string)=>void; onUnlock:()=>void;
  onDecision:(decision:'APROBADA'|'RECHAZADA')=>void; canDecide:boolean; openCandidate360:(id:string)=>void;
 };
-export function AttendancePanel({participants,date,setDate,onToday,windowInfo,loading,saving,onMark,onUnlock,onDecision,canDecide,openCandidate360}:Props) {
+export function AttendancePanel({groupId,companyId,participants,date,setDate,onToday,windowInfo,loading,saving,onMark,onUnlock,onDecision,canDecide,openCandidate360}:Props) {
+ const [roster,setRoster]=useState<{date:string;rows:AttendanceRosterRow[]}|null>(null),[filter,setFilter]=useState('ALL');
+ const rows=roster?.date===date?roster.rows:undefined;
+ const marked=(p:CandidateRecord)=>rows?.find(r=>r.personId===p.id)?.status||p.training?.attendance?.find(a=>a.date===date)?.status;
+ const registered=participants.filter(marked).length;
  const [historyOpen,setHistoryOpen]=useState(false);
  const [historyDate,setHistoryDate]=useState('');
  const [clock,setClock]=useState<{source:string;now:number}|null>(null);
@@ -34,6 +40,8 @@ export function AttendancePanel({participants,date,setDate,onToday,windowInfo,lo
  const historicalDate=dates.includes(historyDate)?historyDate:dates[0];
  const button='rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-[#0B2847] hover:bg-blue-50 disabled:opacity-50';
  return <div className="space-y-5">
+  {groupId&&<SelfAttendanceLink groupId={groupId} companyId={companyId} date={date} onUpdate={r=>setRoster({date,rows:r})}/>}
+  <div className="flex flex-wrap justify-between gap-3"><p>{registered} registrados de {participants.length} · {participants.length-registered} sin marcar</p><select aria-label="Filtrar asistencia" className="rounded border p-2" value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Todos</option><option value="MARKED">Registrados</option><option value="PENDING">Sin marcar</option></select></div>
   <div className="grid gap-4 xl:grid-cols-[1fr_280px]">
    <div className="min-w-0">
     <div className="flex flex-wrap items-end justify-between gap-3">
@@ -49,7 +57,7 @@ export function AttendancePanel({participants,date,setDate,onToday,windowInfo,lo
      {beforeEntry>0&&<p className="mt-1">{beforeEntry} participante(s) ingresaron después de esta fecha. Su asistencia se habilita desde su incorporación; el desbloqueo no cambia esa fecha.</p>}
      {historical&&<button className={button+' mt-2'} onClick={onToday}>Marcar hoy</button>}
     </div>}
-    <AttendanceTable participants={participants} date={date} openCandidate360={openCandidate360} disabled={saving||!canMark} onMark={onMark}/>
+    <AttendanceTable roster={rows} participants={participants.filter(p=>filter==='ALL'||(filter==='MARKED'?!!marked(p):!marked(p)))} date={date} openCandidate360={openCandidate360} disabled={saving||!canMark} onMark={onMark}/>
    </div>
    <aside className="space-y-3">
     <div className={'rounded-xl border p-4 '+(canMark?'border-emerald-200 bg-emerald-50':'border-slate-200 bg-slate-50')}>
@@ -74,23 +82,24 @@ export function AttendancePanel({participants,date,setDate,onToday,windowInfo,lo
  </div>;
 }
 
-export function AttendanceTable({participants,date,openCandidate360,onMark,disabled=true}:{
- participants:CandidateRecord[];date:string;openCandidate360:(id:string)=>void;
- onMark?:(id:string,status:AttendanceStatus)=>void;disabled?:boolean;
+export function AttendanceTable({roster,participants,date,openCandidate360,onMark,disabled=true}:{
+ roster?:AttendanceRosterRow[];participants:CandidateRecord[];date:string;openCandidate360:(id:string)=>void;
+ onMark?:(id:string,status:AttendanceStatus,notes?:string)=>void;disabled?:boolean;
 }) {
  return <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
   <table className="w-full min-w-[640px] text-left text-xs">
    <caption className="sr-only">Asistencias del {attendanceDateLabel(date)}</caption>
-   <thead className="bg-slate-50 text-slate-500"><tr>{['Participante','DNI','Asistencia','Observación',...(onMark?['Acción']:[])].map(t=><th key={t} scope="col" className="px-4 py-3">{t}</th>)}</tr></thead>
+   <thead className="bg-slate-50 text-slate-500"><tr>{['Participante','DNI','Asistencia','Hora (Perú)','Registrado por','Observación',...(onMark?['Acción']:[])].map(t=><th key={t} scope="col" className="px-4 py-3">{t}</th>)}</tr></thead>
    <tbody className="divide-y divide-slate-100">{participants.map(candidate=>{
     const beforeInjection=Boolean(candidate.training?.injection&&date<candidate.training.injection.date);
-    const record=candidate.training?.attendance?.find(a=>a.date===date);const status=record?.status||'';
+    const record=candidate.training?.attendance?.find(a=>a.date===date);const live=roster?.find(r=>r.personId===candidate.id);const status=live?.status||record?.status||'';
     return <tr key={candidate.id}>
      <td className="px-4 py-3"><button className="font-semibold text-[#0B2847]" onClick={()=>openCandidate360(candidate.id)}>{candidate.fullName||'Candidato'}</button><InjectionBadge candidate={candidate}/></td>
      <td className="px-4 py-3 text-slate-500">{candidate.dni||'—'}</td>
      <td className="px-4 py-3">{beforeInjection?<>Aún no incorporado<span className="mt-1 block text-xs text-slate-500">Ingreso: {attendanceDateLabel(candidate.training!.injection!.date)}</span></>:labels[status]||status||'Sin marcar'}</td>
-     <td className="whitespace-pre-wrap break-words px-4 py-3 text-slate-500">{record?.notes||'—'}</td>
-     {onMark&&<td className="px-4 py-3"><select aria-label={'Asistencia de '+candidate.fullName} disabled={disabled||beforeInjection} value={status} onChange={e=>onMark(candidate.id,e.target.value as AttendanceStatus)} className="rounded-lg border border-slate-200 p-2 disabled:bg-slate-50"><option value="" disabled>Seleccionar</option>{['PRESENTE','TARDANZA','FALTA','JUSTIFICADO'].map(s=><option key={s} value={s}>{labels[s]}</option>)}</select></td>}
+     <td className="px-4 py-3">{live?.markedAt||record?.recordedAt?limaTime((live?.markedAt||record?.recordedAt)!):'—'}</td><td className="px-4 py-3">{live?.source||(record?.source==='SELF_LINK'?'Postulante · enlace/QR':status?'Formador · manual':'—')}</td>
+     <td className="whitespace-pre-wrap break-words px-4 py-3 text-slate-500">{live?.notes||record?.notes||'—'}{live?.history?.length?<details><summary>Correcciones ({live.history.length})</summary>{live.history.map((h,i)=><p key={i}>{limaTime(h.at)} · {h.previous} → {h.status}: {h.reason}</p>)}</details>:null}</td>
+     {onMark&&<td className="px-4 py-3"><select aria-label={'Asistencia de '+candidate.fullName} disabled={disabled||beforeInjection} value={status} onChange={e=>{let reason:string|undefined;if(status&&status!==e.target.value){const value=window.prompt('Motivo de la corrección (mínimo 5 caracteres)');if(!value)return;if(value.trim().length<5){window.alert('El motivo debe tener al menos 5 caracteres.');return;}reason=value.trim();}onMark(candidate.id,e.target.value as AttendanceStatus,reason);}} className="rounded-lg border border-slate-200 p-2 disabled:bg-slate-50"><option value="" disabled>Seleccionar</option>{['PRESENTE','TARDANZA','FALTA','JUSTIFICADO'].map(s=><option key={s} value={s}>{labels[s]}</option>)}</select></td>}
     </tr>;
    })}</tbody>
   </table>

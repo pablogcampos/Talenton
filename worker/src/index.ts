@@ -1375,7 +1375,7 @@ const worker={async scheduled(_event:ScheduledController,env:Env,ctx:ExecutionCo
     return response(await handleVoicebot(request,env),200,{...cors(request,env),'Cache-Control':'no-store'});
    }catch(e){return response({message:e instanceof SupabaseError?e.code:'VOICEBOT_FAILED'},e instanceof SupabaseError?e.status:500,{...cors(request,env),'Cache-Control':'no-store'});}
   }
-  if(request.method!=='OPTIONS' && (path==='/api/trainings/manual'||path==='/api/offers'||path.startsWith('/api/offers/')||path.startsWith('/api/public/offers/'))){
+  if(request.method!=='OPTIONS' && (path==='/api/attendance-links'||path.startsWith('/api/public/attendance/')||path==='/api/trainings/manual'||path==='/api/offers'||path.startsWith('/api/offers/')||path.startsWith('/api/public/offers/'))){
     try{
       if(!originAllowed(request,env))throw new SupabaseError(403,'ORIGIN_NOT_ALLOWED');
       return response(await handleOffers(request,env),200,{...cors(request,env),'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'});

@@ -4,8 +4,8 @@ type Env=SupabaseEnv & {CAPTURE_HASH_SECRET?:string};
 export async function offerRpc<T>(env:Env,name:string,args:object):Promise<T>{
  const r=await fetch(env.SUPABASE_URL!.replace(/\/$/,'')+'/rest/v1/rpc/'+name,{method:'POST',headers:supabaseServerHeaders(env),body:JSON.stringify(args)});
  const data=await r.json() as any;
- if(!r.ok){const code=data.code==='42501'?'FORBIDDEN':/^OFFER_[A-Z_]+$/.test(data.message||'')?data.message:'OFFER_FAILED';throw new SupabaseError(code==='FORBIDDEN'?403:400,code);}
- if(data?.error)throw new SupabaseError(data.error==='OFFER_RATE_LIMITED'?429:400,data.error);
+ if(!r.ok){const code=data.code==='42501'?'FORBIDDEN':/^(OFFER|ATTENDANCE)_[A-Z_]+$/.test(data.message||'')?data.message:'OFFER_FAILED';throw new SupabaseError(code==='FORBIDDEN'?403:400,code);}
+ if(data?.error)throw new SupabaseError(['OFFER_RATE_LIMITED','ATTENDANCE_LINK_RATE_LIMIT'].includes(data.error)?429:400,data.error);
  return data;
 }
 async function input(request:Request){
@@ -37,7 +37,16 @@ export async function handleOffers(request:Request,env:Env){
   }
   return offerRpc(env,'talent_offer_group_public',{p_token:groupToken,p_data:data,p_evidence:hash});
  }
+ const attendanceToken=path.match(/^\/api\/public\/attendance\/([a-f0-9]{64})$/)?.[1];
+ if(attendanceToken){
+ if(!['GET','POST'].includes(request.method))throw new SupabaseError(405,'METHOD_NOT_ALLOWED');
+ const data=request.method==='POST'?await input(request):null;
+ if(data&&!env.CAPTURE_HASH_SECRET)throw new SupabaseError(503,'OFFER_FAILED');
+ const hash=data?Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(env.CAPTURE_HASH_SECRET+':attendance:'+attendanceToken+':'+(request.headers.get('cf-connecting-ip')||'unknown'))))).map(b=>b.toString(16).padStart(2,'0')).join(''):null;
+ return offerRpc(env,'talent_attendance_link_public',{p_token:attendanceToken,p_data:data,p_hash:hash});
+ }
  const actor=await relationalSession(request,env);const args={p_actor:actor.authUserId,p_company:actor.companyId};
+ if(path==='/api/attendance-links'&&['GET','POST'].includes(request.method)){const url=new URL(request.url);return offerRpc(env,'talent_attendance_link_admin',{...args,p_group:url.searchParams.get('group'),p_date:url.searchParams.get('date'),p_data:request.method==='POST'?await input(request):null});}
  if(path==='/api/trainings/manual'&&['GET','POST'].includes(request.method))return offerRpc(env,'talent_training_manual',{...args,p_data:request.method==='POST'?await input(request):null});
  if(path==='/api/offers/companies'&&request.method==='GET'){
   const companies=await Promise.all((actor.companies||[{id:actor.companyId,name:'Mi empresa',managed:false}]).map(async company=>{

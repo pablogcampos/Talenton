@@ -13,6 +13,11 @@ export class WorkerApiError extends Error {
 }
 
 const WORKER_ERROR_MESSAGES: Record<string, string> = {
+ ATTENDANCE_LINK_EXPIRED: 'El registro está cerrado o venció. Solicita al formador que lo habilite.',
+ ATTENDANCE_LINK_INVALID: 'Selecciona la fecha de hoy y una duración de 1 a 180 minutos, dentro de las fechas de capacitación.',
+ ATTENDANCE_LINK_IDENTITY: 'No se pudo validar este DNI para esta capacitación. Consulta con tu formador.',
+ ATTENDANCE_LINK_RATE_LIMIT: 'Demasiados intentos. Espera un minuto y vuelve a intentar.',
+ ATTENDANCE_CORRECTION_REASON: 'Indica un motivo de al menos 5 caracteres para corregir la asistencia.',
   CINTHIA_UNAVAILABLE: 'Las entrevistas y los envíos se habilitarán cuando Gemini esté conectado.',
   CINTHIA_NOT_FOUND: 'El enlace o registro no existe o no está disponible.',
   CINTHIA_INVALID_STATE: 'La invitación cambió de estado. Actualiza para continuar.',

@@ -25,12 +25,6 @@ async function call(path:string,method='GET',body?:any,actor=admin,company?:stri
  return {status:r.status,data};
 }
 
-async function signGroup(group:string){
- const created=await call('/api/offers/templates','POST',{campaignId,title:'CI Propuesta',content:'Condiciones CI para {{nombre}}. Bonos y políticas de capacitación.'});expect(created.status).toBe(200);
- expect((await call('/api/offers/assign','POST',{groupId:group,templateId:created.data})).status).toBe(200);
- const docs=(await db.query('select * from talent_offers.documents where group_id=$1 and revoked_at is null',[group])).rows;
- for(const d of docs){const signed=await call('/api/public/offers/'+d.token,'POST',{dni:d.snapshot.dni,accepted:true,contentHash:d.content_hash,signature:[Array.from({length:12},(_,i)=>[i*10,30+i])]});expect(signed.status).toBe(200);expect(signed.data.signedAt).toBeTruthy();}
-}
 
 describe('Transición relacional PostgreSQL 17',()=>{
  beforeAll(async()=>{
@@ -91,3 +85,4 @@ it('formador creates Excel roster, starts theory, marks attendance and manages d
  expect((await db.query('select count(*)::int n from talent.attendance')).rows[0].n).toBe(1);
 });
 });
+

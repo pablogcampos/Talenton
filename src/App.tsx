@@ -13,6 +13,7 @@ const PublicFreeCinthiaView = lazy(() => import('./views/PublicFreeCinthiaView')
 const PublicCinthiaView = lazy(() => import('./views/PublicCinthiaView').then(m => ({default:m.PublicCinthiaView})));
 const VoicebotView = lazy(() => import('./views/VoicebotView').then(m => ({ default: m.VoicebotView })));
 const LaborOffersView = lazy(() => import('./views/LaborOffersView').then(m => ({ default: m.LaborOffersView })));
+const PublicAttendanceView = lazy(() => import('./views/PublicAttendanceView').then(m => ({default:m.PublicAttendanceView})));
 const PublicOfferView = lazy(() => import('./views/PublicOfferView').then(m => ({ default: m.PublicOfferView })));
 const Candidate360Modal = lazy(() => import('./components/candidates/Candidate360Modal').then(module => ({ default: module.Candidate360Modal })));
 const DashboardView = lazy(() => import('./views/DashboardView').then(module => ({ default: module.DashboardView })));
@@ -232,6 +233,8 @@ const AppContent: React.FC = () => {
 };
 
 export default function App() {
+ const attendanceRoute=window.location.pathname.match(/^\/asistencia\/([a-f0-9]{64})$/);
+ if(attendanceRoute)return <Suspense fallback={<p>Cargando asistencia…</p>}><PublicAttendanceView token={attendanceRoute[1]}/></Suspense>;
  const freeRoute=window.location.pathname.match(/^\/cinthia\/libre\/([a-f0-9]{64})$/);
  if(freeRoute)return <Suspense fallback={<p>Cargando…</p>}><PublicFreeCinthiaView token={freeRoute[1]}/></Suspense>;
   const cinthiaRoute=window.location.pathname.match(/^\/cinthia\/([a-f0-9]{64})$/);
