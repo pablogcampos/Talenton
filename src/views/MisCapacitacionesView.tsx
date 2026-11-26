@@ -1,3 +1,4 @@
+import {ManualTraining} from '../components/training/ManualTraining';
 import {OjtMetricModal,OjtMetricsTable} from '../components/training/OjtMetrics';
 import { OffersPanel } from './LaborOffersView';
 import { trainingDayNumber } from '../../shared/trainingRules';
@@ -95,7 +96,7 @@ export const MisCapacitacionesView: React.FC = () => {
   const [metricTarget,setMetricTarget]=useState<CandidateRecord|null>(null);
   const addOjtMetric = async (candidate:CandidateRecord)=>{setMetricTarget(candidate);};
 
-  if (!selected) return <AssignedList assigned={assigned} candidates={scopedCandidates} today={today} pendingOjt={pendingOjt} onOpen={cohort => { setWorkspaceId(cohort.id); setTab('RESUMEN'); setFollowingToday(true); setAttendanceDate(today); }} />;
+  if (!selected) return <><ManualTraining/><AssignedList assigned={assigned} candidates={scopedCandidates} today={today} pendingOjt={pendingOjt} onOpen={cohort => { setWorkspaceId(cohort.id); setTab('RESUMEN'); setFollowingToday(true); setAttendanceDate(today); }} /></>;
 
   const activeParticipants = participants.filter(candidate => !['DESERTO', 'NO_APTO', 'NSP'].includes(String(candidate.training?.status))).length;
   const incidentCount = participants.filter(candidate => ['FALTA', 'TARDANZA', 'NSP'].includes(String(candidateAttendance(candidate, today)?.status))).length;

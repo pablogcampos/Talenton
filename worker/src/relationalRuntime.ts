@@ -103,7 +103,9 @@ export class RelationalRuntime {
  private source(name:string){const old=this.rows('recruitment_sources').find(x=>x.name===name);if(old)return old.id;const id='source:'+name;this.put('recruitment_sources',id,{name});return id;}
  private personForApp(id:string){return this.find('applications',id)?.person_id;}
  private participant(personId:string,groupId?:string){
-  return this.rows('participants').find(p=>(!groupId||p.group_id===groupId)&&this.personForApp(p.application_id)===personId&&p.archived_at==null);
+  const matches=this.rows('participants').filter(p=>(!groupId||p.group_id===groupId)&&this.personForApp(p.application_id)===personId&&p.archived_at==null);
+  const current=this.find('persons',personId)?.current_application_id;
+  return matches.find(p=>p.application_id===current)||matches.sort((a,b)=>String(b.joined_at||'').localeCompare(String(a.joined_at||'')))[0];
  }
  private template(id:string):D|undefined {
   const t=this.find('process_templates',id);if(!t)return;

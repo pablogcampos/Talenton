@@ -38,6 +38,7 @@ export async function handleOffers(request:Request,env:Env){
   return offerRpc(env,'talent_offer_group_public',{p_token:groupToken,p_data:data,p_evidence:hash});
  }
  const actor=await relationalSession(request,env);const args={p_actor:actor.authUserId,p_company:actor.companyId};
+ if(path==='/api/trainings/manual'&&['GET','POST'].includes(request.method))return offerRpc(env,'talent_training_manual',{...args,p_data:request.method==='POST'?await input(request):null});
  if(path==='/api/offers/companies'&&request.method==='GET'){
   const companies=await Promise.all((actor.companies||[{id:actor.companyId,name:'Mi empresa',managed:false}]).map(async company=>{
    let context:SessionProfile;

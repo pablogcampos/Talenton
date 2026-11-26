@@ -1,0 +1,4 @@
+// @vitest-environment jsdom
+import {it,expect} from 'vitest';import {createXlsx} from './xlsxExport';import {trainingHeaders,parseTrainingExcel,validateTrainingRows} from './trainingExcel';
+it('reads template preserving DNI zeroes and normalizes phone and workday',()=>{const rows=parseTrainingExcel(createXlsx([{name:'Participantes',headers:trainingHeaders,rows:[['01234567','Persona prueba','+51 999111222','','Fulltime']]}]));expect(rows[0]).toMatchObject({dni:'01234567',phone:'51999111222',workday:'FULL_TIME'});expect(validateTrainingRows(rows)).toEqual([]);expect(validateTrainingRows([...rows,...rows]).join(' ')).toContain('duplicado');});
+it('rejects wrong headers and missing required fields',()=>{expect(()=>parseTrainingExcel(createXlsx([{name:'Datos',headers:['Otro'],rows:[]}]))).toThrow('columnas');expect(validateTrainingRows([{dni:'',name:'',phone:'',email:'x',workday:''}]).length).toBe(5);});

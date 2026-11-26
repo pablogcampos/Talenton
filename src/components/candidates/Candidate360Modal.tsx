@@ -173,7 +173,7 @@ export const Candidate360Modal: React.FC<Candidate360ModalProps> = ({
   const campaignLocation = campaign?.location || candidate.city;
   const hasTrainingLink = Boolean(candidate.trainingId || candidate.training?.cohortId);
   const canAccessCandidateDocuments =
-    (['ADMIN', 'JEFE_FORMACION', 'COORDINADOR_FORMACION'].includes(currentUser.role) && hasTrainingLink)
+    (['ADMIN', 'JEFE_FORMACION', 'COORDINADOR_FORMACION', 'FORMADOR'].includes(currentUser.role) && hasTrainingLink)
     || (['JEFE_TALENTO', 'ANALISTA_TALENTO'].includes(currentUser.role) && candidate.currentProcess === 'GESTION_TALENTO');
   const handleCvDownload = async () => {
     setCvDownloading(true); setCvError('');
@@ -376,7 +376,7 @@ export const Candidate360Modal: React.FC<Candidate360ModalProps> = ({
               { id: 'verificacion_tecnica', label: 'Verificación', icon: Laptop },
               { id: 'evaluaciones', label: 'Evaluaciones', icon: Award, badge: candidate.selection?.evaluationsList?.length || candidate.selection?.evaluations?.length },
               ...(['ADMIN', 'JEFE_SELECCION', 'ANALISTA_SELECCION', 'RECLUTADOR'].includes(currentUser.role) ? [{ id: 'proceso', label: 'Gestión avanzada', icon: History }] : []),
-              ...(currentUser.role === 'FORMADOR' ? [] : [{ id: 'documentos', label: 'Documentos', icon: FolderOpen, badge: (candidate.documents?.length || candidate.selection?.documents?.length) }])
+              ...([{ id: 'documentos', label: 'Documentos', icon: FolderOpen, badge: (candidate.documents?.length || candidate.selection?.documents?.length) }])
             ].map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
